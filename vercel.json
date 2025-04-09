@@ -5,14 +5,13 @@
       "src": "package.json",
       "use": "@vercel/static-build",
       "config": {
-        "distDir": "dist/annotation"
+        "distDir": "dist/annotation/browser"
       }
     }
   ],
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "/index.html"
-    }
-  ]
+ "routes": [
+  { "src": "/favicon.ico", "dest": "/favicon.ico" },
+  { "src": "/(assets/.+)", "dest": "/$1" },
+  { "src": "/(.*)", "dest": "/index.html" }
+]
 }

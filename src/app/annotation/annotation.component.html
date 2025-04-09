@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/css/bootstrap.min.css">
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+  <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/js/bootstrap.min.js"></script>
+</head>
+<body>
+  <div class="container" *ngIf="imageUrl">
+    <!-- Image on the left -->
+    <div class="image-container" (click)="toggleZoom()">
+      <img [src]="imageUrl" [class.zoomed]="isZoomed" alt="Lesion Image" class="lesion-image">
+    </div>
+    <!-- <div class="image-container">
+      <img [src]="imageUrl" alt="Lesion Image" class="lesion-image" id="zoomableImage"/>
+    </div> -->
+
+    <!-- Description Section -->
+    <div class="description-container" *ngIf="annotationData">
+      
+      <div id="description">
+        <ul>
+          <li>
+            <strong>Image Id:</strong> {{ annotationData.description['image_id'] }}
+            <!-- <input [(ngModel)]="jsonData['lesion_type']" placeholder="Edit lesion_type" /> -->
+          </li>
+          <li>
+            <strong>Lesion Type:</strong> {{ annotationData.description['type_of_lesion'] }}
+            <button (click)="duplicateText('type_of_lesion', annotationData.description['type_of_lesion'])">Duplicate</button>
+            <input [(ngModel)]="jsonData['type_of_lesion']" name="type_of_lesion" #type_of_lesion="ngModel" required placeholder="Edit type_of_lesion" class="big-input"/>
+            <div *ngIf="type_of_lesion.invalid && type_of_lesion.touched" class="error">This field is required</div>
+          </li>
+          
+          <li>
+            <strong>Lesion Site:</strong> {{ annotationData.description['site'] }}
+            <button (click)="duplicateText('site', annotationData.description['site'])">Duplicate</button>
+            <input [(ngModel)]="jsonData['site']" name="site" #site="ngModel" required placeholder="Edit site" class="big-input"/>
+            <div *ngIf="site.invalid && site.touched" class="error">This field is required</div>
+          </li>
+          
+          <li>
+            <strong>Count:</strong> {{ annotationData.description['count'] }}
+            <button (click)="duplicateText('count', annotationData.description['count'])">Duplicate</button>
+            <input [(ngModel)]="jsonData['count']" name="count" #count="ngModel" required placeholder="Edit count" class="big-input"/>
+            <div *ngIf="count.invalid && count.touched" class="error">This field is required</div>
+          </li>
+          
+          <li>
+            <strong>Arrangement:</strong> {{ annotationData.description['arrangement'] }}
+            <button (click)="duplicateText('arrangement', annotationData.description['arrangement'])">Duplicate</button>
+            <input [(ngModel)]="jsonData['arrangement']" name="arrangement" #arrangement="ngModel" required placeholder="Edit arrangement" class="big-input"/>
+            <div *ngIf="arrangement.invalid && arrangement.touched" class="error">This field is required</div>
+          </li>
+          
+          <li>
+            <strong>Size:</strong> {{ annotationData.description['size'] }}
+            <button (click)="duplicateText('size', annotationData.description['size'])">Duplicate</button>
+            <input [(ngModel)]="jsonData['size']" name="size" #size="ngModel" required placeholder="Edit size" class="big-input"/>
+            <div *ngIf="size.invalid && size.touched" class="error">This field is required</div>
+          </li>
+          
+          <li>
+            <strong>Color Pattern:</strong> {{ annotationData.description['color_pattern'] }}
+            <button (click)="duplicateText('color_pattern', annotationData.description['color_pattern'])">Duplicate</button>
+            <input [(ngModel)]="jsonData['color_pattern']" name="color_pattern" #color_pattern="ngModel" required placeholder="Edit color_pattern" class="big-input"/>
+            <div *ngIf="color_pattern.invalid && color_pattern.touched" class="error">This field is required</div>
+          </li>
+          
+          <li>
+            <strong>Border:</strong> {{ annotationData.description['border'] }}
+            <button (click)="duplicateText('border', annotationData.description['border'])">Duplicate</button>
+            <input [(ngModel)]="jsonData['border']" name="border" #border="ngModel" required placeholder="Edit border" class="big-input"/>
+            <div *ngIf="border.invalid && border.touched" class="error">This field is required</div>
+          </li>
+          
+          <li>
+            <strong>Surface Changes:</strong> {{ annotationData.description['surface_changes'] }}
+            <button (click)="duplicateText('surface_changes', annotationData.description['surface_changes'])">Duplicate</button>
+            <input [(ngModel)]="jsonData['surface_changes']" name="surface_changes" #surface_changes="ngModel" required placeholder="Edit surface_changes" class="big-input"/>
+            <div *ngIf="surface_changes.invalid && surface_changes.touched" class="error">This field is required</div>
+          </li>
+          
+          <li>
+            <strong>Presence of Exudate or Discharge:</strong> {{ annotationData.description['presence_of_exudate_or_discharge'] }}
+            <button (click)="duplicateText('presence_of_exudate_or_discharge', annotationData.description['presence_of_exudate_or_discharge'])">Duplicate</button>
+            <input [(ngModel)]="jsonData['presence_of_exudate_or_discharge']" name="presence_of_exudate_or_discharge" #presence_of_exudate_or_discharge="ngModel" required placeholder="Edit presence_of_exudate_or_discharge" class="big-input"/>
+            <div *ngIf="presence_of_exudate_or_discharge.invalid && presence_of_exudate_or_discharge.touched" class="error">This field is required</div>
+          </li>
+          
+          <li>
+            <strong>Surrounding Skin Changes:</strong> {{ annotationData.description['surrounding_skin_changes'] }}
+            <button (click)="duplicateText('surrounding_skin_changes', annotationData.description['surrounding_skin_changes'])">Duplicate</button>
+            <input [(ngModel)]="jsonData['surrounding_skin_changes']" name="surrounding_skin_changes" #surrounding_skin_changes="ngModel" required placeholder="Edit surrounding_skin_changes" class="big-input"/>
+            <div *ngIf="surrounding_skin_changes.invalid && surrounding_skin_changes.touched" class="error">This field is required</div>
+          </li>
+          
+          <li>
+            <strong>Secondary Changes:</strong> {{ annotationData.description['secondary_changes'] }}
+            <button (click)="duplicateText('secondary_changes', annotationData.description['secondary_changes'])">Duplicate</button>
+            <input [(ngModel)]="jsonData['secondary_changes']" name="secondary_changes" #secondary_changes="ngModel" required placeholder="Edit secondary_changes" class="big-input"/>
+            <div *ngIf="secondary_changes.invalid && secondary_changes.touched" class="error">This field is required</div>
+          </li>
+          
+          <li>
+            <strong>Pattern or Shape:</strong> {{ annotationData.description['pattern_or_shape'] }}
+            <button (click)="duplicateText('pattern_or_shape', annotationData.description['pattern_or_shape'])">Duplicate</button>
+            <input [(ngModel)]="jsonData['pattern_or_shape']" name="pattern_or_shape" #pattern_or_shape="ngModel" required placeholder="Edit pattern_or_shape" class="big-input"/>
+            <div *ngIf="pattern_or_shape.invalid && pattern_or_shape.touched" class="error">This field is required</div>
+          </li>
+          
+          <li>
+            <strong>Additional Notes:</strong> {{ annotationData.description['additional_notes'] }}
+            <button (click)="duplicateText('additional_notes', annotationData.description['additional_notes'])">Duplicate</button>
+            <textarea [(ngModel)]="jsonData['additional_notes']" name="additional_notes" #additional_notes="ngModel" required placeholder="Edit additional_notes" class="big-input"></textarea>
+            <div *ngIf="additional_notes.invalid && additional_notes.touched" class="error">This field is required</div>
+          </li>
+          
+          <li>
+            <strong>Overall Description:</strong> {{ annotationData.description['overall_description'] }}
+            <button (click)="duplicateText('overall_description', annotationData.description['overall_description'])">Duplicate</button>
+            <textarea [(ngModel)]="jsonData['overall_description']" name="overall_description" #overall_description="ngModel" required placeholder="Edit overall_description" class="big-input"></textarea>
+            <div *ngIf="overall_description.invalid && overall_description.touched" class="error">This field is required</div>
+          </li>
+          
+          <li>
+            <strong>Differential Diagnosis based on Image:</strong>
+            <textarea [(ngModel)]="additionalDiagnosis"
+            name="additionalDiagnosis"
+            placeholder="Add additional diagnosis"
+            class="big-input"
+            required>
+  </textarea>
+            <div class="error">This field is required</div>
+          </li>
+        </ul>
+      </div>
+
+      <!-- Save & Next Button -->
+      <button (click)="saveAndNext()" class="btn btn-success">Save & Next</button> <br>
+      <button (click)="markNonRelevant()" class="btn btn-primary">Non-Relevant</button>
+    
+    </div>
+  </div>
+</body>
+</html>

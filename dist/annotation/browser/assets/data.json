@@ -1,0 +1,12 @@
+[
+  {
+    "id": "img_1",
+    "description": "Sample image description",
+    "features": ["feature1", "feature2", "feature3"]
+  },
+  {
+    "id": "img_2",
+    "description": "Another image description",
+    "features": ["featureA", "featureB", "featureC"]
+  }
+]

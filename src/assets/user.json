@@ -1,0 +1,14 @@
+[
+  { "username": "admin", "password": "admin123" },
+    { "username": "drannotatorS", "password": "pass123" },
+    { "username": "drannotatorR", "password": "pass234" },
+    { "username": "annotator3", "password": "pass345" },
+    { "username": "annotator4", "password": "pass456" },
+    { "username": "annotator5", "password": "pass567" },
+    { "username": "annotator6", "password": "pass678" },
+    { "username": "annotator7", "password": "pass789" },
+    { "username": "annotator8", "password": "pass890" },
+    { "username": "annotator9", "password": "pass900" },
+    { "username": "annotator10", "password": "pass011" }
+  ]
+  

@@ -1,0 +1,6 @@
+<header>
+  <h1>ANNOTATION</h1>
+  <button *ngIf="authService.isLoggedIn()" (click)="logout()">Logout</button>
+</header>
+
+<router-outlet></router-outlet>

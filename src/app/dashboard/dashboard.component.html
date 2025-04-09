@@ -1,0 +1,16 @@
+<div class="dashboard-container">
+  <!-- Dropdown for logout + time tracking -->
+  <!-- <div class="logout-dropdown">
+      <button class="logout-button">⚙️ Options</button>
+      <div class="dropdown-content">
+          <p>🕒 Online Time: {{ onlineTime }}</p>
+          <p>✅ Annotations: {{ annotationsCount }}</p>
+      </div>
+  </div> -->
+
+  <!-- Annotation Options -->
+  <div *ngFor="let option of annotationOptions">
+      <p>{{ option.name }}</p>
+      <button (click)="selectOption(option)">CLICK</button>
+  </div>
+</div>

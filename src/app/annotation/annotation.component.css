@@ -1,0 +1,130 @@
+/* --- Main Layout Grid --- */
+.container {
+    display: flex; 
+    align-items: flex-start; /* Align image and text at the top */
+    gap: 20px; /* Add spacing between image and description */
+  }
+
+  /* .image-container {
+    overflow: hidden;
+    width: 100%;
+    max-width: 500px;
+    cursor: pointer;
+  } */
+  
+  .lesion-image {
+    width: 100%;
+    transition: transform 0.3s ease;
+  }
+  
+  .lesion-image.zoomed {
+    transform: scale(1.5); /* You can adjust the scale */
+  }
+  
+  
+  .image-container {
+    flex: 0 0 auto; /* Prevent image from resizing */
+  }
+  
+  .lesion-image {
+    max-width: 250px; /* Set initial width */
+    height: auto;
+    cursor: pointer;
+    transition: transform 0.3s ease-in-out;
+    margin: 20px 10px;
+  }
+  
+  /* Ensure zoom is applied only when the class is toggled */
+  .lesion-image.zoomed {
+    transform: scale(1.5); /* Adjust zoom level */
+    max-width: none; /* Allow image to expand */
+  }
+  
+  
+  .description-container {
+    flex: 1; /* Allow description to take remaining space */
+  }
+  
+
+/* .image-container img {
+    max-width: 100%;
+    height: auto;
+    display: block;
+    cursor: zoom-in;
+    transition: transform 0.3s ease;
+} */
+
+
+/* --- Description List Styling --- */
+#description {
+    font-family: Arial, sans-serif;
+    margin-top: 15px;
+    width: 100%;
+}
+
+#description ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+/* --- Ensure Each Row is Aligned --- */
+#description li {
+    display: grid;
+    grid-template-columns: 150px 1fr auto 1fr; /* Label, Text, Button, Input */
+    gap: 10px;
+    align-items: center; /* Align items properly */
+    padding-bottom: 10px;
+    border-bottom: 1px solid #ddd;
+}
+
+/* --- Label Styling --- */
+#description li strong {
+    text-align: right;
+    font-weight: bold;
+}
+
+/* --- Text Styling --- */
+#description li span {
+    word-break: break-word;
+}
+
+/* --- Button Styling --- */
+#description li button {
+    padding: 5px 10px;
+    background-color: #007BFF;
+    color: white;
+    border: none;
+    cursor: pointer;
+}
+
+#description li button:hover {
+    background-color: #0056b3;
+}
+
+.big-input {
+  width: 100%;         /* Make it take full width */
+  height: 120px;        /* Increase height */
+  padding: 10px 15px;  /* Add padding for content */
+  font-size: 14px;     /* Bigger text */
+  display: block;      /* Make it a block element */
+  box-sizing: border-box;
+}
+
+
+/* --- Input Field Styling --- */
+#description li input[type="text"] {
+    width: 100%;
+    padding: 5px;
+    border: 1px solid #ccc;
+    box-sizing: border-box;
+}
+
+.btn-primary {
+    background-color: #007bff;
+    border-color: #007bff;
+    margin-top: 10px;
+}

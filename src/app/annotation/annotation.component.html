@@ -18,8 +18,9 @@
     </div> -->
 
     <!-- Description Section -->
-    <div class="description-container" *ngIf="annotationData">
-      
+    <div class="description-container" *ngIf="annotationData"><br>
+      <p><strong>Note: If the provided data does not appear sufficient or if you are uncertain about what to enter, please write "unknown".</strong></p>
+      <button (click)="markNonRelevant()" class="btn-primary">Non-Relevant</button>
       <div id="description">
         <ul>
           <li>
@@ -110,7 +111,7 @@
             <div *ngIf="pattern_or_shape.invalid && pattern_or_shape.touched" class="error">This field is required</div>
           </li>
           
-          <li>
+          <!-- <li>
             <strong>Additional Notes:</strong> {{ annotationData.description['additional_notes'] }}
             <button (click)="duplicateText('additional_notes', annotationData.description['additional_notes'])">Duplicate</button>
             <textarea [(ngModel)]="jsonData['additional_notes']" name="additional_notes" #additional_notes="ngModel" required placeholder="Edit additional_notes" class="big-input"></textarea>
@@ -122,7 +123,7 @@
             <button (click)="duplicateText('overall_description', annotationData.description['overall_description'])">Duplicate</button>
             <textarea [(ngModel)]="jsonData['overall_description']" name="overall_description" #overall_description="ngModel" required placeholder="Edit overall_description" class="big-input"></textarea>
             <div *ngIf="overall_description.invalid && overall_description.touched" class="error">This field is required</div>
-          </li>
+          </li> -->
           
           <li>
             <strong>Differential Diagnosis based on Image:</strong>
@@ -132,14 +133,21 @@
             class="big-input"
             required>
   </textarea>
-            <div class="error">This field is required</div>
+          </li>
+          <li>
+            <strong>Additional Observation:</strong>
+            <textarea [(ngModel)]="additionalObservation"
+            name="additionalObservation"
+            placeholder="Add additional observation"
+            class="big-input"
+            required>
+  </textarea>
           </li>
         </ul>
       </div>
 
       <!-- Save & Next Button -->
       <button (click)="saveAndNext()" class="btn btn-success">Save & Next</button> <br>
-      <button (click)="markNonRelevant()" class="btn btn-primary">Non-Relevant</button>
     
     </div>
   </div>

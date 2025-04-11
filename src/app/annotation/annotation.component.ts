@@ -34,7 +34,7 @@ export class AnnotationComponent implements OnInit {
     total: 0,
     remaining: 0,
   };
-  severity: string = '';
+  additionalObservation: string = '';
   additionalDiagnosis: string = '';
   annotatedby: string = '';
   annotationData: any = {};
@@ -45,6 +45,8 @@ export class AnnotationComponent implements OnInit {
   randomData: any = null;
   progressData: any;
   isZoomed = false;
+  nextAnnotationData: any = null;
+
 
   constructor(
     private route: ActivatedRoute,
@@ -90,46 +92,25 @@ export class AnnotationComponent implements OnInit {
     this.getAnnotatorProgress();
   }
   
-  loadAnnotationData(): void {
+  loadAnnotationData(preloadedData?: any): void {
     this.loading = true;
     this.error = null;
+  
+    if (preloadedData) {
+      console.log('Using preloaded annotation data.');
+      this.setAnnotationData(preloadedData);
+      this.loading = false;
+      return;
+    }
   
     this.annotationService.getAnnotationData(this.annotatorId)
       .subscribe({
         next: (data) => {
-          this.annotationData = data;
-          console.log('Annotation data loaded:', data);
-  
-          // Process description
-          if (this.annotationData && this.annotationData.description) {
-            this.jsonKeyValues = Object.entries(this.annotationData.description).map(
-              ([key, value]) => ({ key, value: String(value) })
-            );            
-            this.jsonData = { ...this.annotationData.description };
-          }
-  
-          // Handle random data if available
-          if (this.annotationData.randomData) {
-            this.randomData = this.annotationData.randomData;
-            
-            if (this.randomData.jsonFiles && this.randomData.jsonFiles.length > 0) {
-              this.assignedJsonFile = this.randomData.jsonFiles[0];
-            }
-            
-            if (this.randomData.imageFiles && this.randomData.imageFiles.length > 0) {
-              this.assignedImageFile = this.randomData.imageFiles[0];
-            }
-          }
-  
-          // Process image paths if available
-          if (this.annotationData && this.annotationData.images) {
-            this.images = this.annotationData.images;
-            if (this.images.length > 0) {
-              this.loadImageData(this.images[0]);
-            }
-          }
-  
+          this.setAnnotationData(data);
           this.loading = false;
+  
+          // Preload next data
+          this.preloadNextAnnotation();
         },
         error: (err) => {
           console.error('Error loading annotation data:', err);
@@ -138,6 +119,42 @@ export class AnnotationComponent implements OnInit {
         }
       });
   }
+
+  setAnnotationData(data: any): void {
+    this.annotationData = data;
+  
+    if (data && data.description) {
+      this.jsonKeyValues = Object.entries(data.description).map(
+        ([key, value]) => ({ key, value: String(value) })
+      );
+      this.jsonData = { ...data.description };
+    }
+  
+    if (data.randomData) {
+      this.randomData = data.randomData;
+      this.assignedJsonFile = data.randomData.jsonFiles?.[0] || '';
+      this.assignedImageFile = data.randomData.imageFiles?.[0] || '';
+    }
+  
+    if (data.images && data.images.length > 0) {
+      this.images = data.images;
+      this.loadImageData(this.images[0]);
+    }
+  }
+
+  preloadNextAnnotation(): void {
+    this.annotationService.getAnnotationData(this.annotatorId).subscribe({
+      next: (data) => {
+        this.nextAnnotationData = data;
+        console.log('Preloaded next annotation data.');
+      },
+      error: (err) => {
+        console.warn('Failed to preload next annotation data:', err);
+        this.nextAnnotationData = null;
+      }
+    });
+  }
+  
 
   loadImageData(imageName: string): void {
     this.annotationService.getImageUrl(this.annotatorId, imageName)
@@ -232,8 +249,8 @@ export class AnnotationComponent implements OnInit {
       return;
     }
   
-    this.jsonData.severity = this.severity;
     this.jsonData.additionalDiagnosis = this.additionalDiagnosis;
+    this.jsonData.additionalObservation = this.additionalObservation;
     this.jsonData.annotatedby = this.username; // Store the annotator's username
   
     const baseFilename = this.assignedJsonFile.split('/').pop() || '';
@@ -249,8 +266,8 @@ export class AnnotationComponent implements OnInit {
           // Track successful save only after confirmed success
           this.timeTracker.trackSuccessfulSave();
   
-          this.severity = '';
           this.additionalDiagnosis = '';
+          this.additionalObservation = '';
   
           // Fetch updated progress only after a successful save
           this.getAnnotatorProgress();
@@ -288,10 +305,7 @@ export class AnnotationComponent implements OnInit {
       'overall_description'
     ];
     
-    if (!this.additionalDiagnosis || this.additionalDiagnosis.trim() === '') {
-      alert('Please enter a Differential Diagnosis.');
-      return;
-    }
+   
   
     // Check if any required field is missing or empty
     const missingFields = requiredFields.filter(field => {
@@ -306,6 +320,7 @@ export class AnnotationComponent implements OnInit {
   
     // Set annotation metadata
     this.jsonData.additionalDiagnosis = this.additionalDiagnosis;
+    this.jsonData.additionalObservation = this.additionalObservation;
     this.jsonData.annotatedby = this.username || 'Unknown';
   
     // Get the base filename from the assigned JSON file or annotation data
@@ -343,14 +358,16 @@ export class AnnotationComponent implements OnInit {
           this.timeTracker.trackSuccessfulSave();
   
           // Clear form
-          this.severity = '';
           this.additionalDiagnosis = '';
+          this.additionalObservation = '';
   
           // Update progress
           this.getAnnotatorProgress();
   
           // Load new annotation
-          this.loadAnnotationData();
+          this.loadAnnotationData(this.nextAnnotationData);
+          this.nextAnnotationData = null; // clear after using
+
         },
         error: (err) => {
           console.error('Error submitting annotation:', err);
@@ -403,6 +420,7 @@ export class AnnotationComponent implements OnInit {
     
     console.log(`Marking file as non-relevant: ${fileName} by user: ${username}`);
     
+    // Pass both filename and username to the service
     this.annotationService.markAsNonRelevant(fileName, username).subscribe({
       next: (res) => {
         console.log('File marked as non-relevant:', res);

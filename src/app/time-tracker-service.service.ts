@@ -34,37 +34,35 @@ export class TimeTrackerService {
       console.warn('Tracking stop called without active tracking');
       return;
     }
-
+  
     const endTime = new Date();
     const sessionDurationMs = endTime.getTime() - this.startTime.getTime();
-    const sessionDurationMinutes = sessionDurationMs / (1000 * 60);
+    const sessionDurationMinutes = Math.round(sessionDurationMs / (1000 * 60));
     this.totalTimeMinutes += sessionDurationMinutes;
-
-    console.log(`Session ended, duration: ${sessionDurationMinutes.toFixed(2)} minutes`);
-    console.log(`Total time: ${this.totalTimeMinutes.toFixed(2)} minutes`);
-    console.log(`Total saves: ${this.saveCount}`);
-
+  
+    const loginTime = this.formatTime(this.startTime);
+    const logoutTime = this.formatTime(endTime);
+    const date = this.formatDate(this.startTime);
+  
+    console.log(`Session ended: ${date}, ${loginTime} → ${logoutTime}, Duration: ${sessionDurationMinutes}min, Saves: ${this.saveCount}`);
+  
+    const formattedCsv = `date,login_time,logout_time,duration_min,save_count\n${date},${loginTime},${logoutTime},${sessionDurationMinutes}min,${this.saveCount}`;
+  
     // Reset tracking
     this.startTime = null;
-
-    // Upload tracking data to server
-    this.uploadTrackingData(forceUpload);
+  
+    // Upload tracking data
+    this.uploadTrackingData(formattedCsv, forceUpload);
   }
-
-  private uploadTrackingData(forceUpload: boolean): void {
-    // Create CSV data
+  
+  private uploadTrackingData(csvData: string, forceUpload: boolean): void {
     const now = new Date();
-    const timestamp = now.toISOString();
-    const csvData = `timestamp,username,duration_minutes,save_count\n${timestamp},${this.username},${this.totalTimeMinutes.toFixed(2)},${this.saveCount}`;
-    
-    // Generate unique filename
     const filename = `tracking_${this.username}_${now.getTime()}.csv`;
-    
-    console.log('Preparing to upload tracking data:', { filename, csvData });
-    
-    // Always upload on forceUpload or if there are saves
+  
+    console.log('Preparing to upload formatted tracking data:', { filename, csvData });
+  
     if (forceUpload || this.saveCount > 0) {
-      this.http.post(`${this.prodUrl}/upload-tracking`, { csv: csvData, filename: filename })
+      this.http.post(`${this.prodUrl}/upload-tracking`, { csv: csvData, filename })
         .subscribe({
           next: (response) => {
             console.log('Tracking data uploaded successfully:', response);
@@ -77,4 +75,15 @@ export class TimeTrackerService {
       console.log('Skipping upload - no saves recorded and not forced');
     }
   }
+  
+  private formatTime(date: Date): string {
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${hours}:${minutes}`;
+  }
+  
+  private formatDate(date: Date): string {
+    return date.toISOString().split('T')[0];
+  }
+  
 }

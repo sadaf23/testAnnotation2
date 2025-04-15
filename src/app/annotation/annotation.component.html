@@ -11,7 +11,7 @@
   <div class="container" *ngIf="imageUrl">
     <!-- Image on the left -->
     <div class="image-container" (click)="toggleZoom()">
-      <img [src]="imageUrl" [class.zoomed]="isZoomed" alt="Lesion Image" class="lesion-image">
+      <img [src]="imageUrl" loading="lazy" [class.zoomed]="isZoomed" alt="Lesion Image" class="lesion-image">
     </div>
     <!-- <div class="image-container">
       <img [src]="imageUrl" alt="Lesion Image" class="lesion-image" id="zoomableImage"/>

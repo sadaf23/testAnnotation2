@@ -6,6 +6,7 @@ import { FormsModule } from '@angular/forms';
 import { TimeTrackerService } from '../time-tracker-service.service';
 import { AuthService } from '../auth.service';
 import { ActivatedRoute } from '@angular/router';
+import { forkJoin } from 'rxjs';
 
 interface AnnotatedData {
   [key: string]: any;
@@ -46,7 +47,7 @@ export class AnnotationComponent implements OnInit {
   progressData: any;
   isZoomed = false;
   nextAnnotationData: any = null;
-
+  preloadedImages: Map<string, string> = new Map();
 
   constructor(
     private route: ActivatedRoute,
@@ -72,6 +73,7 @@ export class AnnotationComponent implements OnInit {
       console.log('Using annotator ID:', this.annotatorId);
       this.loadAllData();
     });
+    this.loadAnnotationData();
   }
 
   toggleZoom(): void {
@@ -100,24 +102,27 @@ export class AnnotationComponent implements OnInit {
       console.log('Using preloaded annotation data.');
       this.setAnnotationData(preloadedData);
       this.loading = false;
+      // Preload the next data immediately
+      this.preloadNextAnnotation();
       return;
     }
   
-    this.annotationService.getAnnotationData(this.annotatorId)
-      .subscribe({
-        next: (data) => {
-          this.setAnnotationData(data);
-          this.loading = false;
+    const annotation$ = this.annotationService.getAnnotationData(this.annotatorId);
+    const progress$ = this.annotationService.getAnnotatorProgress(this.annotatorId);
   
-          // Preload next data
-          this.preloadNextAnnotation();
-        },
-        error: (err) => {
-          console.error('Error loading annotation data:', err);
-          this.error = 'Failed to load annotation data. Please try again.';
-          this.loading = false;
-        }
-      });
+    forkJoin([annotation$, progress$]).subscribe({
+      next: ([annotationData, progressData]) => {
+        this.setAnnotationData(annotationData);
+        this.progress = progressData;
+        this.loading = false;
+        this.preloadNextAnnotation();
+      },
+      error: (err) => {
+        console.error('Error loading data:', err);
+        this.error = 'Failed to load data. Please try again.';
+        this.loading = false;
+      }
+    });
   }
 
   setAnnotationData(data: any): void {
@@ -147,6 +152,10 @@ export class AnnotationComponent implements OnInit {
       next: (data) => {
         this.nextAnnotationData = data;
         console.log('Preloaded next annotation data.');
+
+        if (data && data.images && data.images.length > 0) {
+          this.preloadNextImages(data.images);
+        }
       },
       error: (err) => {
         console.warn('Failed to preload next annotation data:', err);
@@ -155,19 +164,105 @@ export class AnnotationComponent implements OnInit {
     });
   }
   
-
-  loadImageData(imageName: string): void {
-    this.annotationService.getImageUrl(this.annotatorId, imageName)
+  preloadNextImages(imageNames: string[]): void {
+    if (!imageNames || imageNames.length === 0) {
+      console.log('No images to preload.');
+      return;
+    }
+    
+    console.log(`Starting preload of ${imageNames.length} images for next annotation.`);
+    
+    // Prioritize preloading the first image since it will be shown immediately
+    this.annotationService.getImageUrl(this.annotatorId, imageNames[0])
       .subscribe({
         next: (blob) => {
-          this.imageUrl = URL.createObjectURL(blob);
+          const url = URL.createObjectURL(blob);
+          this.preloadedImages.set(imageNames[0], url);
+          console.log(`Preloaded primary image: ${imageNames[0]}`);
+          
+          // After preloading the first image, preload the rest if there are any
+          if (imageNames.length > 1) {
+            this.preloadRemainingImages(imageNames.slice(1));
+          }
         },
         error: (err) => {
-          console.error('Error loading image:', err);
-          this.error = 'Failed to load image. Please try again.';
+          console.warn(`Failed to preload primary image ${imageNames[0]}:`, err);
         }
       });
   }
+  
+  // Helper method to preload remaining images with lower priority
+  preloadRemainingImages(imageNames: string[]): void {
+    let loadedCount = 0;
+    
+    // Process each image sequentially to avoid overwhelming the network
+    const loadNextImage = (index: number) => {
+      if (index >= imageNames.length) {
+        console.log(`Completed preloading all ${loadedCount} remaining images.`);
+        return;
+      }
+      
+      this.annotationService.getImageUrl(this.annotatorId, imageNames[index])
+        .subscribe({
+          next: (blob) => {
+            const url = URL.createObjectURL(blob);
+            this.preloadedImages.set(imageNames[index], url);
+            loadedCount++;
+            console.log(`Preloaded additional image ${index + 1}/${imageNames.length}: ${imageNames[index]}`);
+            
+            // Load the next image
+            loadNextImage(index + 1);
+          },
+          error: (err) => {
+            console.warn(`Failed to preload image ${imageNames[index]}:`, err);
+            // Continue with next image even if this one failed
+            loadNextImage(index + 1);
+          }
+        });
+    };
+    
+    // Start loading the first remaining image
+    loadNextImage(0);
+  }
+  
+
+  // loadImageData(imageName: string): void {
+  //   this.annotationService.getImageUrl(this.annotatorId, imageName)
+  //     .subscribe({
+  //       next: (blob) => {
+  //         this.imageUrl = URL.createObjectURL(blob);
+  //       },
+  //       error: (err) => {
+  //         console.error('Error loading image:', err);
+  //         this.error = 'Failed to load image. Please try again.';
+  //       }
+  //     });
+  // }
+  loadImageData(imageName: string): void {
+    // Check if this image was preloaded
+    const preloadedUrl = this.preloadedImages.get(imageName);
+    
+    if (preloadedUrl) {
+      console.log(`Using preloaded image for ${imageName}`);
+      this.imageUrl = preloadedUrl;
+      // Remove from the preloaded map to free memory
+      this.preloadedImages.delete(imageName);
+    } else {
+      // Fall back to regular loading if not preloaded
+      console.log(`Image ${imageName} not preloaded, loading normally`);
+      this.annotationService.getImageUrl(this.annotatorId, imageName)
+        .subscribe({
+          next: (blob) => {
+            this.imageUrl = URL.createObjectURL(blob);
+          },
+          error: (err) => {
+            console.error('Error loading image:', err);
+            this.error = 'Failed to load image. Please try again.';
+          }
+        });
+    }
+  }
+  
   
   nextImage(): void {
     if (this.currentImageIndex < this.images.length - 1) {
@@ -365,8 +460,13 @@ export class AnnotationComponent implements OnInit {
           this.getAnnotatorProgress();
   
           // Load new annotation
-          this.loadAnnotationData(this.nextAnnotationData);
-          this.nextAnnotationData = null; // clear after using
+          if (this.nextAnnotationData) {
+            this.loadAnnotationData(this.nextAnnotationData);
+            this.nextAnnotationData = null; // Clear after using
+          } else {
+            // Fallback in case preloaded data isn't available
+            this.loadAnnotationData();
+          }
 
         },
         error: (err) => {
@@ -437,4 +537,16 @@ export class AnnotationComponent implements OnInit {
       }
     });
   }
+
+  ngOnDestroy(): void {
+    // Clean up any object URLs to prevent memory leaks
+    this.preloadedImages.forEach((url) => {
+      URL.revokeObjectURL(url);
+    });
+    this.preloadedImages.clear();
+    
+    if (this.imageUrl && this.imageUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(this.imageUrl);
+    }
+}
 }

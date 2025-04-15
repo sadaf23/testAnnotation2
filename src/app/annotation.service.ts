@@ -1,12 +1,13 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
-import { map, Observable, catchError, of, throwError } from 'rxjs';
+import { map, Observable, catchError, of, throwError, shareReplay } from 'rxjs';
 
 @Injectable({
   providedIn: 'root'
 })
 export class AnnotationService {
   // Make sure this URL matches your backend server URL
+  private cache: { [key: string]: Observable<any> } = {};
   private backendUrl = 'http://localhost:8080';
   private prodUrl = 'https://backend-268040451245.us-central1.run.app';
 
@@ -144,6 +145,23 @@ export class AnnotationService {
 
   getDummyData(): Observable<any> {
     return this.http.get(`${this.prodUrl}/data/dummy`);
+  }
+
+  getCachedData(endpoint: string): Observable<any> {
+    if (!this.cache[endpoint]) {
+      this.cache[endpoint] = this.http.get(`${this.prodUrl}/${endpoint}`).pipe(
+        shareReplay(1) // Cache the response
+      );
+    }
+    return this.cache[endpoint];
+  }
+
+  clearCache(endpoint?: string) {
+    if (endpoint) {
+      delete this.cache[endpoint];
+    } else {
+      this.cache = {};
+    }
   }
   
 }

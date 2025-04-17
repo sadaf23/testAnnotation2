@@ -1,4 +1,4 @@
-import { Component, OnInit, AfterViewInit, HostListener } from '@angular/core';
+import { Component, OnInit, OnDestroy, HostListener, ChangeDetectionStrategy, ChangeDetectorRef } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { AnnotationService } from '../annotation.service';
 import { CommonModule } from '@angular/common';
@@ -6,10 +6,16 @@ import { FormsModule } from '@angular/forms';
 import { TimeTrackerService } from '../time-tracker-service.service';
 import { AuthService } from '../auth.service';
 import { ActivatedRoute } from '@angular/router';
-import { forkJoin } from 'rxjs';
+import { forkJoin, Subscription } from 'rxjs';
 
 interface AnnotatedData {
   [key: string]: any;
+}
+
+interface ImageOptions {
+  format?: 'webp' | 'jpeg' | 'png' | 'avif';
+  width?: number;
+  quality?: number;
 }
 
 @Component({
@@ -17,9 +23,10 @@ interface AnnotatedData {
   standalone: true,
   imports: [CommonModule, FormsModule],
   templateUrl: './annotation.component.html',
-  styleUrls: ['./annotation.component.css']
+  styleUrls: ['./annotation.component.css'],
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
-export class AnnotationComponent implements OnInit {
+export class AnnotationComponent implements OnInit, OnDestroy {
   
   jsonData: any = {};
   imageUrl: string = '';
@@ -48,14 +55,31 @@ export class AnnotationComponent implements OnInit {
   isZoomed = false;
   nextAnnotationData: any = null;
   preloadedImages: Map<string, string> = new Map();
+  private subscriptions = new Subscription();
+  private isSlowConnection: boolean = false;
+  private textareasResized = false;
+  historyStack: any[] = [];
+  currentHistoryIndex = -1;
+  sessionAnnotationCount: number = 0;
+
+  
+  // Image dimensions for layout stability
+  imageWidth: number = 800;
+  imageHeight: number = 600;
+  
+
 
   constructor(
     private route: ActivatedRoute,
     private authService: AuthService, 
     private annotationService: AnnotationService, 
     private http: HttpClient, 
-    private timeTracker: TimeTrackerService
-  ) {}
+    private timeTracker: TimeTrackerService,
+    private changeDetector: ChangeDetectorRef
+  ) {
+    // Check connection quality if available
+    this.checkConnectionSpeed();
+  }
 
   ngOnInit() {
     console.log('Fetching Annotator ID from localStorage...');
@@ -65,7 +89,7 @@ export class AnnotationComponent implements OnInit {
     
     this.timeTracker.startSessionTracking();
     
-    this.route.params.subscribe(params => {
+    const routeSubscription = this.route.params.subscribe(params => {
       if (params['id']) {
         this.annotatorId = params['id'];
         localStorage.setItem('annotatorId', this.annotatorId);
@@ -73,11 +97,32 @@ export class AnnotationComponent implements OnInit {
       console.log('Using annotator ID:', this.annotatorId);
       this.loadAllData();
     });
-    this.loadAnnotationData();
+    
+    this.subscriptions.add(routeSubscription);
+  }
+
+  ngAfterViewChecked(): void {
+    if (!this.textareasResized) {
+      this.resizeAllTextareas();
+      this.textareasResized = true; // Prevent repeat
+    }
+  }
+
+  checkConnectionSpeed(): void {
+    // Use Navigator connection API if available
+    const connection = (navigator as any).connection;
+    if (connection) {
+      this.isSlowConnection = connection.saveData || 
+        (connection.effectiveType && 
+         (connection.effectiveType.includes('2g') || connection.effectiveType.includes('slow')));
+      
+      console.log(`Connection status: ${this.isSlowConnection ? 'slow' : 'fast'}`);
+    }
   }
 
   toggleZoom(): void {
     this.isZoomed = !this.isZoomed;
+    this.changeDetector.detectChanges();
   }
 
   loadAllData(): void {
@@ -87,11 +132,8 @@ export class AnnotationComponent implements OnInit {
     // Save annotator ID to localStorage for persistence
     localStorage.setItem('annotatorId', this.annotatorId);
     
-    // Load annotation data
+    // Load annotation data and progress data in parallel
     this.loadAnnotationData();
-    
-    // Load progress data in parallel
-    this.getAnnotatorProgress();
   }
   
   loadAnnotationData(preloadedData?: any): void {
@@ -104,30 +146,51 @@ export class AnnotationComponent implements OnInit {
       this.loading = false;
       // Preload the next data immediately
       this.preloadNextAnnotation();
+      this.changeDetector.markForCheck();
       return;
     }
   
-    const annotation$ = this.annotationService.getAnnotationData(this.annotatorId);
-    const progress$ = this.annotationService.getAnnotatorProgress(this.annotatorId);
-  
-    forkJoin([annotation$, progress$]).subscribe({
+    const dataSubscription = forkJoin([
+      this.annotationService.getAnnotationData(this.annotatorId),
+      this.annotationService.getAnnotatorProgress(this.annotatorId)
+    ]).subscribe({
       next: ([annotationData, progressData]) => {
         this.setAnnotationData(annotationData);
         this.progress = progressData;
         this.loading = false;
         this.preloadNextAnnotation();
+        this.changeDetector.markForCheck();
       },
       error: (err) => {
         console.error('Error loading data:', err);
         this.error = 'Failed to load data. Please try again.';
         this.loading = false;
+        this.changeDetector.markForCheck();
       }
     });
+    setTimeout(() => {
+      const allTextareas = document.querySelectorAll('textarea');
+      allTextareas.forEach((ta) => {
+        (ta as HTMLTextAreaElement).style.height = 'auto';
+        (ta as HTMLTextAreaElement).style.height = (ta as HTMLTextAreaElement).scrollHeight + 'px';
+      });
+    }, 100);
+    
+    
+    this.subscriptions.add(dataSubscription);
   }
 
   setAnnotationData(data: any): void {
     this.annotationData = data;
+    this.textareasResized = false;
+
+    if (this.currentHistoryIndex === -1 || this.historyStack[this.currentHistoryIndex]?.filename !== data.filename) {
+      this.historyStack.push(data);
+      this.currentHistoryIndex = this.historyStack.length - 1;
+    }
   
+    this.annotationData = data;
+
     if (data && data.description) {
       this.jsonKeyValues = Object.entries(data.description).map(
         ([key, value]) => ({ key, value: String(value) })
@@ -147,14 +210,30 @@ export class AnnotationComponent implements OnInit {
     }
   }
 
+  resizeAllTextareas() {
+    const allTextareas = document.querySelectorAll('textarea');
+    allTextareas.forEach((ta) => {
+      const el = ta as HTMLTextAreaElement;
+      el.style.height = 'auto';
+      el.style.height = el.scrollHeight + 'px';
+    });
+  }
+
   preloadNextAnnotation(): void {
-    this.annotationService.getAnnotationData(this.annotatorId).subscribe({
+    // Skip preloading if on a slow connection
+    if (this.isSlowConnection) {
+      console.log('Skipping preload due to slow connection');
+      return;
+    }
+    
+    const preloadSubscription = this.annotationService.getAnnotationData(this.annotatorId).subscribe({
       next: (data) => {
         this.nextAnnotationData = data;
         console.log('Preloaded next annotation data.');
 
         if (data && data.images && data.images.length > 0) {
-          this.preloadNextImages(data.images);
+          // Only preload the first image to reduce network load
+          this.preloadNextImages([data.images[0]]);
         }
       },
       error: (err) => {
@@ -162,82 +241,50 @@ export class AnnotationComponent implements OnInit {
         this.nextAnnotationData = null;
       }
     });
+    
+    this.subscriptions.add(preloadSubscription);
   }
   
   preloadNextImages(imageNames: string[]): void {
-    if (!imageNames || imageNames.length === 0) {
-      console.log('No images to preload.');
+    if (!imageNames || imageNames.length === 0 || this.isSlowConnection) {
       return;
     }
     
-    console.log(`Starting preload of ${imageNames.length} images for next annotation.`);
+    console.log(`Starting preload of primary image for next annotation.`);
     
-    // Prioritize preloading the first image since it will be shown immediately
-    this.annotationService.getImageUrl(this.annotatorId, imageNames[0])
-      .subscribe({
-        next: (blob) => {
-          const url = URL.createObjectURL(blob);
-          this.preloadedImages.set(imageNames[0], url);
-          console.log(`Preloaded primary image: ${imageNames[0]}`);
-          
-          // After preloading the first image, preload the rest if there are any
-          if (imageNames.length > 1) {
-            this.preloadRemainingImages(imageNames.slice(1));
-          }
-        },
-        error: (err) => {
-          console.warn(`Failed to preload primary image ${imageNames[0]}:`, err);
-        }
-      });
-  }
-  
-  // Helper method to preload remaining images with lower priority
-  preloadRemainingImages(imageNames: string[]): void {
-    let loadedCount = 0;
+    // Only preload the first image to conserve bandwidth
+    const imageName = imageNames[0];
     
-    // Process each image sequentially to avoid overwhelming the network
-    const loadNextImage = (index: number) => {
-      if (index >= imageNames.length) {
-        console.log(`Completed preloading all ${loadedCount} remaining images.`);
-        return;
+    const imageSubscription = this.annotationService.getImageUrl(
+      this.annotatorId, 
+      imageName,
+      {
+        format: 'webp',
+        width: this.getOptimalImageWidth(),
+        quality: 80
       }
-      
-      this.annotationService.getImageUrl(this.annotatorId, imageNames[index])
-        .subscribe({
-          next: (blob) => {
-            const url = URL.createObjectURL(blob);
-            this.preloadedImages.set(imageNames[index], url);
-            loadedCount++;
-            console.log(`Preloaded additional image ${index + 1}/${imageNames.length}: ${imageNames[index]}`);
-            
-            // Load the next image
-            loadNextImage(index + 1);
-          },
-          error: (err) => {
-            console.warn(`Failed to preload image ${imageNames[index]}:`, err);
-            // Continue with next image even if this one failed
-            loadNextImage(index + 1);
-          }
-        });
-    };
+    ).subscribe({
+      next: (blob) => {
+        const url = URL.createObjectURL(blob);
+        this.preloadedImages.set(imageName, url);
+        console.log(`Preloaded primary image: ${imageName}`);
+      },
+      error: (err) => {
+        console.warn(`Failed to preload primary image ${imageName}:`, err);
+      }
+    });
     
-    // Start loading the first remaining image
-    loadNextImage(0);
+    this.subscriptions.add(imageSubscription);
   }
   
+  getOptimalImageWidth(): number {
+    // Return appropriate size based on screen width
+    const screenWidth = window.innerWidth;
+    if (screenWidth <= 768) return 600; // Mobile
+    if (screenWidth <= 1200) return 800; // Tablet
+    return 1200; // Desktop
+  }
 
-  // loadImageData(imageName: string): void {
-  //   this.annotationService.getImageUrl(this.annotatorId, imageName)
-  //     .subscribe({
-  //       next: (blob) => {
-  //         this.imageUrl = URL.createObjectURL(blob);
-  //       },
-  //       error: (err) => {
-  //         console.error('Error loading image:', err);
-  //         this.error = 'Failed to load image. Please try again.';
-  //       }
-  //     });
-  // }
   loadImageData(imageName: string): void {
     // Check if this image was preloaded
     const preloadedUrl = this.preloadedImages.get(imageName);
@@ -247,22 +294,39 @@ export class AnnotationComponent implements OnInit {
       this.imageUrl = preloadedUrl;
       // Remove from the preloaded map to free memory
       this.preloadedImages.delete(imageName);
+      this.changeDetector.markForCheck();
     } else {
       // Fall back to regular loading if not preloaded
-      console.log(`Image ${imageName} not preloaded, loading normally`);
-      this.annotationService.getImageUrl(this.annotatorId, imageName)
-        .subscribe({
-          next: (blob) => {
-            this.imageUrl = URL.createObjectURL(blob);
-          },
-          error: (err) => {
-            console.error('Error loading image:', err);
-            this.error = 'Failed to load image. Please try again.';
+      console.log(`Image ${imageName} not preloaded, loading optimized version`);
+      
+      const imageSubscription = this.annotationService.getImageUrl(
+        this.annotatorId, 
+        imageName,
+        {
+          format: 'webp',
+          width: this.getOptimalImageWidth(),
+          quality: 80
+        }
+      ).subscribe({
+        next: (blob) => {
+          // Revoke old URL if it exists to prevent memory leaks
+          if (this.imageUrl && this.imageUrl.startsWith('blob:')) {
+            URL.revokeObjectURL(this.imageUrl);
           }
-        });
+          
+          this.imageUrl = URL.createObjectURL(blob);
+          this.changeDetector.markForCheck();
+        },
+        error: (err) => {
+          console.error('Error loading image:', err);
+          this.error = 'Failed to load image. Please try again.';
+          this.changeDetector.markForCheck();
+        }
+      });
+      
+      this.subscriptions.add(imageSubscription);
     }
   }
-  
   
   nextImage(): void {
     if (this.currentImageIndex < this.images.length - 1) {
@@ -284,16 +348,18 @@ export class AnnotationComponent implements OnInit {
       return;
     }
 
-    this.annotationService.getAnnotatorProgress(this.annotatorId).subscribe({
+    const progressSubscription = this.annotationService.getAnnotatorProgress(this.annotatorId).subscribe({
       next: (progress) => {
         console.log('Annotator progress:', progress);
         this.progress = progress;
+        this.changeDetector.markForCheck();
       },
       error: (error) => {
         console.error('Error fetching annotator progress:', error);
-        // Don't set main error to avoid blocking the UI
       }
     });
+    
+    this.subscriptions.add(progressSubscription);
   }
 
   loadJsonData(filename: string) {
@@ -303,7 +369,7 @@ export class AnnotationComponent implements OnInit {
       return;
     }
 
-    this.annotationService.getJsonData(baseFilename, this.annotatorId || undefined).subscribe({
+    const jsonSubscription = this.annotationService.getJsonData(baseFilename, this.annotatorId || undefined).subscribe({
       next: (data) => {
         console.log('JSON data loaded:', data);
         this.jsonData = data;
@@ -313,29 +379,15 @@ export class AnnotationComponent implements OnInit {
           key,
           value: typeof value === 'string' ? value : JSON.stringify(value)
         }));
+        
+        this.changeDetector.markForCheck();
       },
       error: (error) => {
         console.error('Error loading JSON data:', error);
       }
     });
-  }
-
-  loadImageUrl(filename: string) {
-    const baseFilename = filename.split('/').pop();
-    if (!baseFilename) {
-      console.error('Invalid filename format');
-      return;
-    }
     
-    this.annotationService.getImageUrl(this.annotatorId, baseFilename).subscribe({
-      next: (blob) => {
-        const imageUrl = URL.createObjectURL(blob);
-        this.imageUrl = imageUrl;
-      },
-      error: (err) => {
-        console.error('Error loading image:', err);
-      }
-    });
+    this.subscriptions.add(jsonSubscription);
   }
 
   saveAnnotation() {
@@ -353,7 +405,7 @@ export class AnnotationComponent implements OnInit {
   
     console.log(`Saving annotation as: ${annotatedFilename} by annotator: ${this.username}`);
   
-    this.annotationService.uploadJson(this.jsonData, annotatedFilename, this.annotatorId)
+    const saveSubscription = this.annotationService.uploadJson(this.jsonData, annotatedFilename, this.annotatorId)
       .subscribe({
         next: (response) => {
           console.log('Annotation saved successfully:', response);
@@ -372,9 +424,10 @@ export class AnnotationComponent implements OnInit {
         },
         error: (error) => {
           console.error('Error saving annotation:', error);
-          // No tracking increment on error
         }
       });
+    
+    this.subscriptions.add(saveSubscription);
   }
   
   saveAndNext() {
@@ -399,8 +452,6 @@ export class AnnotationComponent implements OnInit {
       'additional_notes',
       'overall_description'
     ];
-    
-   
   
     // Check if any required field is missing or empty
     const missingFields = requiredFields.filter(field => {
@@ -441,12 +492,7 @@ export class AnnotationComponent implements OnInit {
   
     console.log(`Submitting annotation for file: ${baseFilename} by annotator: ${this.annotatorId}`);
   
-    console.log('Annotation data being sent:', JSON.stringify({
-      annotatorId: this.annotatorId,
-      annotationData: this.jsonData
-    }, null, 2));
-  
-    this.annotationService.submitAnnotation(this.annotatorId, this.jsonData)
+    const submitSubscription = this.annotationService.submitAnnotation(this.annotatorId, this.jsonData)
       .subscribe({
         next: (response) => {
           console.log('Annotation submitted successfully', response);
@@ -467,25 +513,53 @@ export class AnnotationComponent implements OnInit {
             // Fallback in case preloaded data isn't available
             this.loadAnnotationData();
           }
-
+          
+          this.changeDetector.markForCheck();
         },
         error: (err) => {
           console.error('Error submitting annotation:', err);
           alert(`Error submitting annotation: ${err.message || 'Unknown error'}`);
         }
       });
+    
+    this.subscriptions.add(submitSubscription);
   }
-  
+
+  previousAnnotation(): void {
+    if (this.currentHistoryIndex > 0) {
+      this.currentHistoryIndex--;
+      const previousData = this.historyStack[this.currentHistoryIndex];
+      console.log('Loading previous annotation:', previousData);
+      this.setAnnotationData(previousData);
+    } else {
+      alert('No previous annotation available.');
+    }
+  }
 
   duplicateText(field: string, value: string) {
     if (field) {
       this.jsonData[field] = value;
+      this.changeDetector.markForCheck();
     }
   }
 
   @HostListener('window:beforeunload', ['$event'])
   beforeUnloadHandler(event: Event) {
     this.timeTracker.stopSessionTracking();
+  }
+  
+  @HostListener('window:resize', ['$event'])
+  onResize(event: Event) {
+    // Update optimal image width on window resize
+    // This could be useful if we're dynamically loading images based on screen size
+    if (this.currentImageIndex >= 0 && this.images.length > 0) {
+      // Only reload current image if the size change is significant
+      const newWidth = this.getOptimalImageWidth();
+      if (Math.abs(newWidth - this.imageWidth) > 200) {
+        this.imageWidth = newWidth;
+        this.loadImageData(this.images[this.currentImageIndex]);
+      }
+    }
   }
 
   logout() {
@@ -521,12 +595,13 @@ export class AnnotationComponent implements OnInit {
     console.log(`Marking file as non-relevant: ${fileName} by user: ${username}`);
     
     // Pass both filename and username to the service
-    this.annotationService.markAsNonRelevant(fileName, username).subscribe({
+    const markSubscription = this.annotationService.markAsNonRelevant(fileName, username).subscribe({
       next: (res) => {
         console.log('File marked as non-relevant:', res);
         
         // Update progress after marking as non-relevant
         this.getAnnotatorProgress();
+        this.sessionAnnotationCount++;
         
         // Load new annotation data
         this.loadAnnotationData();
@@ -536,6 +611,18 @@ export class AnnotationComponent implements OnInit {
         alert(`Error marking file as non-relevant: ${err.message || 'Unknown error'}`);
       }
     });
+    
+    this.subscriptions.add(markSubscription);
+  }
+
+  @HostListener('input', ['$event.target'])
+  autoGrowTextZone(el: EventTarget | null): void {
+    if (el instanceof HTMLTextAreaElement) {
+      console.log('Resizing:', el.value); // ✅ for debug
+      // Reset height first to get the correct scrollHeight
+      el.style.height = 'auto';
+      el.style.height = el.scrollHeight + 'px';
+    }
   }
 
   ngOnDestroy(): void {
@@ -548,5 +635,11 @@ export class AnnotationComponent implements OnInit {
     if (this.imageUrl && this.imageUrl.startsWith('blob:')) {
       URL.revokeObjectURL(this.imageUrl);
     }
-}
+    
+    // Cancel all subscriptions to prevent memory leaks
+    this.subscriptions.unsubscribe();
+    
+    // Stop tracking session
+    this.timeTracker.stopSessionTracking();
+  }
 }

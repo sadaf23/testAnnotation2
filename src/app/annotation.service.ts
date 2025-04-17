@@ -84,19 +84,36 @@ export class AnnotationService {
       );
     }
   
-  getImageUrl(annotatorId: string, filename: string): Observable<Blob> {
-    // First try the new API endpoint
-    const url = `${this.prodUrl}/api/images/${annotatorId}/${filename}`;
-    return this.http.get(url, { responseType: 'blob' })
-      .pipe(
+    getImageUrl(annotatorId: string, filename: string, options?: { format?: string, width?: number, quality?: number }): Observable<Blob> {
+      // Build query parameters for optimization if options are provided
+      let params = new HttpParams();
+      if (options) {
+        if (options.format) params = params.set('format', options.format);
+        if (options.width) params = params.set('width', options.width.toString());
+        if (options.quality) params = params.set('quality', options.quality.toString());
+      }
+      
+      // First try the new API endpoint with optimization parameters
+      const url = `${this.prodUrl}/api/images/${annotatorId}/${filename}`;
+      return this.http.get(url, { 
+        responseType: 'blob',
+        params: params
+      }).pipe(
         catchError(error => {
           console.error('Error fetching image, trying alternative endpoint:', error);
           // If that fails, try the alternative endpoint
           const fallbackUrl = `${this.prodUrl}/image/${filename}?annotatorId=${annotatorId}`;
-          return this.http.get(fallbackUrl, { responseType: 'blob' });
+          // Add optimization parameters to fallback URL as well
+          let fallbackParams = fallbackUrl;
+          if (options) {
+            if (options.format) fallbackParams += `&format=${options.format}`;
+            if (options.width) fallbackParams += `&width=${options.width}`;
+            if (options.quality) fallbackParams += `&quality=${options.quality}`;
+          }
+          return this.http.get(fallbackParams, { responseType: 'blob' });
         })
       );
-  }
+    }
   
   // In annotation.service.ts
   submitAnnotation(annotatorId: string, annotationData: any): Observable<any> {
@@ -163,5 +180,7 @@ export class AnnotationService {
       this.cache = {};
     }
   }
+
+  
   
 }

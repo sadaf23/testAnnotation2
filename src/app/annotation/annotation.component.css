@@ -11,7 +11,7 @@
   top: 20px; /* Distance from top of viewport when sticky */
   align-self: flex-start;
   max-height: calc(100vh - 40px); /* Limit height to prevent overflow */
-  overflow: hidden;
+  overflow: auto;
   flex: 0 0 auto; 
 }
 
@@ -34,8 +34,12 @@ position: relative;
 
 
 .description-container {
-  flex: 1; /* Allow description to take remaining space */
+  flex: 1;
+  min-width: 0;              /* Allow child elements to shrink if needed */
+  overflow-wrap: break-word; /* Ensure content wraps */
+  word-break: break-word;    /* Fallback for older browsers */
 }
+
 
 
 /* --- Description List Styling --- */
@@ -89,13 +93,29 @@ position: relative;
 }
 
 .big-input {
-width: 100%;         /* Make it take full width */
-height: 120px;        /* Increase height */
-padding: 10px 15px;  /* Add padding for content */
-font-size: 14px;     /* Bigger text */
-display: block;      /* Make it a block element */
+width: 100%;
+font-size: 14px;
+line-height: 1.5;
+padding: 10px 15px;
+resize: none;
+overflow: auto;
+display: block;
 box-sizing: border-box;
+
+white-space: pre-wrap;
+word-break: break-word;
+overflow-wrap: break-word;
+
 }
+
+
+.auto-resize {
+min-height: 40px;
+overflow-x: visible; /* or auto */
+white-space: normal; /* allows text wrapping */
+width: 100%;
+}
+
 
 
 /* --- Input Field Styling --- */
@@ -104,6 +124,8 @@ box-sizing: border-box;
   padding: 5px;
   border: 1px solid #ccc;
   box-sizing: border-box;
+  max-width: 100%;
+  overflow: visible;
 }
 
 .btn-primary {

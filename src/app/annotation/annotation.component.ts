@@ -504,6 +504,7 @@ export class AnnotationComponent implements OnInit, OnDestroy {
   
           // Update progress
           this.getAnnotatorProgress();
+          this.sessionAnnotationCount++;
   
           // Load new annotation
           if (this.nextAnnotationData) {
@@ -598,6 +599,7 @@ export class AnnotationComponent implements OnInit, OnDestroy {
     const markSubscription = this.annotationService.markAsNonRelevant(fileName, username).subscribe({
       next: (res) => {
         console.log('File marked as non-relevant:', res);
+        this.timeTracker.trackSuccessfulSave();
         
         // Update progress after marking as non-relevant
         this.getAnnotatorProgress();

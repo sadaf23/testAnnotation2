@@ -61,7 +61,9 @@ export class AnnotationComponent implements OnInit, OnDestroy {
   historyStack: any[] = [];
   currentHistoryIndex = -1;
   sessionAnnotationCount: number = 0;
-
+  dailyAnnotationCount: number = 0;
+  lastAnnotationDate: string = '';  
+  imageLoading: boolean = true;
   
   // Image dimensions for layout stability
   imageWidth: number = 800;
@@ -99,6 +101,7 @@ export class AnnotationComponent implements OnInit, OnDestroy {
     });
     
     this.subscriptions.add(routeSubscription);
+    this.loadDailyAnnotationCount();
   }
 
   ngAfterViewChecked(): void {
@@ -132,6 +135,7 @@ export class AnnotationComponent implements OnInit, OnDestroy {
     // Save annotator ID to localStorage for persistence
     localStorage.setItem('annotatorId', this.annotatorId);
     
+    this.loadDailyAnnotationCount();
     // Load annotation data and progress data in parallel
     this.loadAnnotationData();
   }
@@ -430,8 +434,25 @@ export class AnnotationComponent implements OnInit, OnDestroy {
     this.subscriptions.add(saveSubscription);
   }
   
+  loadDailyAnnotationCount() {
+    const today = new Date().toISOString().split('T')[0]; // Format: YYYY-MM-DD
+    const storedDate = localStorage.getItem('lastAnnotationDate');
+    
+    if (storedDate === today) {
+      // Still the same day, use the stored count
+      this.dailyAnnotationCount = parseInt(localStorage.getItem('dailyAnnotationCount') || '0', 10);
+    } else {
+      // New day, reset the count
+      this.dailyAnnotationCount = 0;
+      localStorage.setItem('lastAnnotationDate', today);
+      localStorage.setItem('dailyAnnotationCount', '0');
+    }
+  }
+  
+
   saveAndNext() {
     this.submitAnnotation(this.jsonData);
+
   }
 
   submitAnnotation(annotationData: any): void {
@@ -449,6 +470,7 @@ export class AnnotationComponent implements OnInit, OnDestroy {
       'surrounding_skin_changes',
       'secondary_changes',
       'pattern_or_shape',
+      'label',
       'additional_notes',
       'overall_description'
     ];
@@ -489,6 +511,14 @@ export class AnnotationComponent implements OnInit, OnDestroy {
     }
   
     this.jsonData.originalFilename = baseFilename;
+
+    if (typeof this.jsonData['label'] === 'string') {
+      this.jsonData['label'] = this.jsonData['label']
+        .split(',')
+        .map((item: string) => item.trim())
+        .filter((item: string) => item.length > 0);
+    }
+    
   
     console.log(`Submitting annotation for file: ${baseFilename} by annotator: ${this.annotatorId}`);
   
@@ -502,9 +532,17 @@ export class AnnotationComponent implements OnInit, OnDestroy {
           this.additionalDiagnosis = '';
           this.additionalObservation = '';
   
+          this.showSuccessPopup();
+
           // Update progress
           this.getAnnotatorProgress();
           this.sessionAnnotationCount++;
+        this.dailyAnnotationCount++;
+        
+        // Store updated daily count in localStorage
+        const today = new Date().toISOString().split('T')[0];
+        localStorage.setItem('lastAnnotationDate', today);
+        localStorage.setItem('dailyAnnotationCount', this.dailyAnnotationCount.toString());
   
           // Load new annotation
           if (this.nextAnnotationData) {
@@ -604,6 +642,16 @@ export class AnnotationComponent implements OnInit, OnDestroy {
         // Update progress after marking as non-relevant
         this.getAnnotatorProgress();
         this.sessionAnnotationCount++;
+        this.dailyAnnotationCount++;
+        
+        // Store updated daily count in localStorage
+        const today = new Date().toISOString().split('T')[0];
+        localStorage.setItem('lastAnnotationDate', today);
+        localStorage.setItem('dailyAnnotationCount', this.dailyAnnotationCount.toString());
+        
+        // Show success popup
+        this.showSuccessPopup('Non-relevant annotation saved successfully');
+        
         
         // Load new annotation data
         this.loadAnnotationData();
@@ -617,6 +665,21 @@ export class AnnotationComponent implements OnInit, OnDestroy {
     this.subscriptions.add(markSubscription);
   }
 
+  showSuccessPopup(message: string = 'Annotation saved successfully') {
+    // Create a div element for the popup
+    const popup = document.createElement('div');
+    popup.className = 'success-popup';
+    popup.innerHTML = `<div class="success-message">${message}</div>`;
+    document.body.appendChild(popup);
+    
+    // Remove the popup after 3 seconds
+    setTimeout(() => {
+      if (popup && document.body.contains(popup)) {
+        document.body.removeChild(popup);
+      }
+    }, 3000);
+  }
+
   @HostListener('input', ['$event.target'])
   autoGrowTextZone(el: EventTarget | null): void {
     if (el instanceof HTMLTextAreaElement) {
@@ -626,6 +689,67 @@ export class AnnotationComponent implements OnInit, OnDestroy {
       el.style.height = el.scrollHeight + 'px';
     }
   }
+
+ // In your annotation.component.ts file
+
+ getLabelText(): string {
+  if (!this.annotationData) return 'Not specified';
+
+  let label: any = null;
+
+  // 1. Check description.label
+  if (this.annotationData.description?.label) {
+    label = this.annotationData.description.label;
+  }
+
+  // 2. If still not found, check root-level label
+  if (!label && this.annotationData.label) {
+    label = this.annotationData.label;
+  }
+
+  // 3. If still not found, extract from description.caption
+  if (!label && this.annotationData.description?.caption) {
+    const captionText = this.annotationData.description.caption;
+    const labelMatch = captionText.match(/label\s*[:=]\s*([^\n]+)/i);
+    if (labelMatch && labelMatch[1]) {
+      label = labelMatch[1].trim();
+    }
+  }
+
+  // Normalize label output
+  if (!label) return 'Not specified';
+  if (Array.isArray(label)) return label.join(', ');
+  return String(label);
+}
+
+
+duplicateLabel(): void {
+  if (!this.annotationData) return;
+
+  let label: any = null;
+
+  if (this.annotationData.description?.label) {
+    label = this.annotationData.description.label;
+  }
+
+  if (!label && this.annotationData.label) {
+    label = this.annotationData.label;
+  }
+
+  if (!label && this.annotationData.description?.caption) {
+    const captionText = this.annotationData.description.caption;
+    const labelMatch = captionText.match(/label\s*[:=]\s*([^\n]+)/i);
+    if (labelMatch && labelMatch[1]) {
+      label = labelMatch[1].trim();
+    }
+  }
+
+  if (label) {
+    this.jsonData['label'] = Array.isArray(label) ? label.join(', ') : String(label);
+    this.changeDetector.markForCheck?.(); // Optional
+  }
+}
+
 
   ngOnDestroy(): void {
     // Clean up any object URLs to prevent memory leaks

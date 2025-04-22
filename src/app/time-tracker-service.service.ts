@@ -37,7 +37,7 @@ export class TimeTrackerService {
   
     const endTime = new Date();
     const sessionDurationMs = endTime.getTime() - this.startTime.getTime();
-    const sessionDurationMinutes = Math.round(sessionDurationMs / (1000 * 60));
+    const sessionDurationMinutes = Math.round(sessionDurationMs / (1000 * 10));
     this.totalTimeMinutes += sessionDurationMinutes;
   
     const loginTime = this.formatTime(this.startTime);

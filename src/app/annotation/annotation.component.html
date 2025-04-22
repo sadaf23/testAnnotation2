@@ -8,8 +8,9 @@
   <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/js/bootstrap.min.js"></script>
 </head>
 <body>
-  <div style="position: absolute; top: 20px; left: 80%; font-weight: bold; z-index: 100; background-color: rgba(255, 255, 255, 0.7); padding: 5px; border-radius: 4px;">
-     Annotations Done: {{ sessionAnnotationCount }}
+  <div style="position: absolute; top: 10px; left: 80%; font-weight: bold; z-index: 100; background-color: rgba(255, 255, 255, 0.7); padding: 5px; border-radius: 4px;">
+    <div>Session Annotations: {{ sessionAnnotationCount }}</div>
+    <div>Today's Annotations: {{ dailyAnnotationCount }}</div>
   </div>
   <div class="container" *ngIf="imageUrl">
     <!-- Image on the left -->
@@ -181,12 +182,18 @@
           </li> -->
           
           <li>
-            <strong>Differential Diagnosis based on Image:</strong> {{ annotationData.description['label'] }}
-            <button (click)="duplicateText('label', annotationData.description['label'])">Duplicate</button>
-            <textarea [(ngModel)]="jsonData['label']" name="label" #label="ngModel" required placeholder="Edit diffrential diagnosis " class=" big-input"
-          rows="1"
-          (input)="autoGrowTextZone($event.target)" >
-</textarea>
+            <strong>Differential Diagnosis based on Image:</strong> {{ getLabelText() }}
+            <button (click)="duplicateLabel()">Duplicate</button>
+            <textarea 
+              [(ngModel)]="jsonData['label']" 
+              name="label" 
+              #label="ngModel" 
+              required 
+              placeholder="Edit differential diagnosis" 
+              class="big-input"
+              rows="1"
+              (input)="autoGrowTextZone($event.target)">
+            </textarea>
             <div *ngIf="label.invalid && label.touched" class="error">This field is required</div>
           </li>
           <li>

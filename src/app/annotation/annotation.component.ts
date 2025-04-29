@@ -7,6 +7,7 @@ import { TimeTrackerService } from '../time-tracker-service.service';
 import { AuthService } from '../auth.service';
 import { ActivatedRoute } from '@angular/router';
 import { forkJoin, Subscription } from 'rxjs';
+import { AdminBoardService, FileCountResponse } from '../admin-board.service';
 
 interface AnnotatedData {
   [key: string]: any;
@@ -16,6 +17,11 @@ interface ImageOptions {
   format?: 'webp' | 'jpeg' | 'png' | 'avif';
   width?: number;
   quality?: number;
+}
+
+interface AnnotatorCount {
+  name: string;
+  count: number;
 }
 
 @Component({
@@ -64,12 +70,16 @@ export class AnnotationComponent implements OnInit, OnDestroy {
   dailyAnnotationCount: number = 0;
   lastAnnotationDate: string = '';  
   imageLoading: boolean = true;
-  
+  saveButtonActive: boolean = false;
+  imageLoaded: boolean = false;
+  descriptionLoaded: boolean = false;
+
   // Image dimensions for layout stability
   imageWidth: number = 800;
   imageHeight: number = 600;
   
-
+  counts: FileCountResponse | null = null;
+  currentAnnotatorCount: number = 0;
 
   constructor(
     private route: ActivatedRoute,
@@ -77,7 +87,8 @@ export class AnnotationComponent implements OnInit, OnDestroy {
     private annotationService: AnnotationService, 
     private http: HttpClient, 
     private timeTracker: TimeTrackerService,
-    private changeDetector: ChangeDetectorRef
+    private changeDetector: ChangeDetectorRef,
+    private adminBoardService: AdminBoardService
   ) {
     // Check connection quality if available
     this.checkConnectionSpeed();
@@ -88,9 +99,9 @@ export class AnnotationComponent implements OnInit, OnDestroy {
     this.annotatorId = localStorage.getItem('annotatorId') || 'general';
     console.log('Fetched Annotator ID:', this.annotatorId);
     this.username = localStorage.getItem('username') || 'Guest';
-    
+
     this.timeTracker.startSessionTracking();
-    
+
     const routeSubscription = this.route.params.subscribe(params => {
       if (params['id']) {
         this.annotatorId = params['id'];
@@ -99,9 +110,10 @@ export class AnnotationComponent implements OnInit, OnDestroy {
       console.log('Using annotator ID:', this.annotatorId);
       this.loadAllData();
     });
-    
+
     this.subscriptions.add(routeSubscription);
     this.loadDailyAnnotationCount();
+    this.fetchFileCounts();
   }
 
   ngAfterViewChecked(): void {
@@ -187,14 +199,14 @@ export class AnnotationComponent implements OnInit, OnDestroy {
   setAnnotationData(data: any): void {
     this.annotationData = data;
     this.textareasResized = false;
-
+  
     if (this.currentHistoryIndex === -1 || this.historyStack[this.currentHistoryIndex]?.filename !== data.filename) {
       this.historyStack.push(data);
       this.currentHistoryIndex = this.historyStack.length - 1;
     }
   
     this.annotationData = data;
-
+  
     if (data && data.description) {
       this.jsonKeyValues = Object.entries(data.description).map(
         ([key, value]) => ({ key, value: String(value) })
@@ -212,6 +224,10 @@ export class AnnotationComponent implements OnInit, OnDestroy {
       this.images = data.images;
       this.loadImageData(this.images[0]);
     }
+    
+    // Mark description as loaded
+    this.descriptionLoaded = true;
+    this.checkLoadingComplete();
   }
 
   resizeAllTextareas() {
@@ -290,6 +306,8 @@ export class AnnotationComponent implements OnInit, OnDestroy {
   }
 
   loadImageData(imageName: string): void {
+    this.imageLoading = true; // Add this line to indicate loading started
+    
     // Check if this image was preloaded
     const preloadedUrl = this.preloadedImages.get(imageName);
     
@@ -298,6 +316,17 @@ export class AnnotationComponent implements OnInit, OnDestroy {
       this.imageUrl = preloadedUrl;
       // Remove from the preloaded map to free memory
       this.preloadedImages.delete(imageName);
+      
+      // Create a temporary image to check when it's loaded
+      const img = new Image();
+      img.onload = () => {
+        this.imageLoading = false;
+        this.imageLoaded = true;
+        this.checkLoadingComplete();
+        this.changeDetector.markForCheck();
+      };
+      img.src = this.imageUrl;
+      
       this.changeDetector.markForCheck();
     } else {
       // Fall back to regular loading if not preloaded
@@ -319,16 +348,37 @@ export class AnnotationComponent implements OnInit, OnDestroy {
           }
           
           this.imageUrl = URL.createObjectURL(blob);
+          
+          // Create a temporary image to check when it's loaded
+          const img = new Image();
+          img.onload = () => {
+            this.imageLoading = false;
+            this.imageLoaded = true;
+            this.checkLoadingComplete();
+            this.changeDetector.markForCheck();
+          };
+          img.src = this.imageUrl;
+          
           this.changeDetector.markForCheck();
         },
         error: (err) => {
           console.error('Error loading image:', err);
           this.error = 'Failed to load image. Please try again.';
+          this.imageLoading = false;
+          this.checkLoadingComplete();
           this.changeDetector.markForCheck();
         }
       });
       
       this.subscriptions.add(imageSubscription);
+    }
+  }
+
+  checkLoadingComplete(): void {
+    if (this.imageLoaded && this.descriptionLoaded) {
+      // Reset the button state when everything is loaded
+      this.saveButtonActive = false;
+      this.changeDetector.markForCheck();
     }
   }
   
@@ -449,10 +499,15 @@ export class AnnotationComponent implements OnInit, OnDestroy {
     }
   }
   
-
   saveAndNext() {
+    // Set button to active state
+    this.saveButtonActive = true;
+    this.imageLoaded = false;
+    this.descriptionLoaded = false;
+    this.changeDetector.markForCheck();
+    
+    // Call the existing submit method
     this.submitAnnotation(this.jsonData);
-
   }
 
   submitAnnotation(annotationData: any): void {
@@ -750,6 +805,42 @@ duplicateLabel(): void {
   }
 }
 
+fetchFileCounts(): void {
+  this.adminBoardService.getFileCounts().subscribe({
+    next: (data: FileCountResponse) => {
+      this.counts = data;
+      this.loading = false;
+      console.log('File counts:', this.counts);
+
+      // Update the current annotator's count
+      this.updateCurrentAnnotatorCount();
+
+      this.changeDetector.markForCheck(); // Ensure UI updates with OnPush strategy
+    },
+    error: (err) => {
+      this.error = err.message;
+      this.loading = false;
+      this.changeDetector.markForCheck();
+    }
+  });
+}
+
+updateCurrentAnnotatorCount(): void {
+  if (this.counts?.annotatedByCounts && this.username) {
+    this.currentAnnotatorCount = this.counts.annotatedByCounts[this.username] || 0;
+    console.log(`Current annotator (${this.username}) count: ${this.currentAnnotatorCount}`);
+  } else {
+    this.currentAnnotatorCount = 0;
+  }
+  // this.changeDetector.markForChange(); // Explicitly trigger change detection
+}
+
+getTotalAnnotations(): number {
+  if (!this.counts?.annotatedByCounts) {
+    return 0;
+  }
+  return Object.values(this.counts.annotatedByCounts).reduce((sum, count) => sum + count, 0);
+}
 
   ngOnDestroy(): void {
     // Clean up any object URLs to prevent memory leaks

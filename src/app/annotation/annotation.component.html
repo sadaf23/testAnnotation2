@@ -8,6 +8,9 @@
   <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/js/bootstrap.min.js"></script>
 </head>
 <body>
+  <div style="position: absolute; top: 20px; left: 68%; font-weight: bold; z-index: 100; background-color: rgba(255, 255, 255, 0.7); padding: 5px; border-radius: 4px;" class="annotator-counts" *ngIf="counts">
+        Total Annotations: {{ currentAnnotatorCount }} 
+  </div>
   <div style="position: absolute; top: 10px; left: 80%; font-weight: bold; z-index: 100; background-color: rgba(255, 255, 255, 0.7); padding: 5px; border-radius: 4px;">
     <div>Session Annotations: {{ sessionAnnotationCount }}</div>
     <div>Today's Annotations: {{ dailyAnnotationCount }}</div>
@@ -209,7 +212,12 @@
       </div><br>
       <button class="btn btn-warning" (click)="previousAnnotation()">Previous</button>&nbsp;
       <!-- Save & Next Button -->
-      <button (click)="saveAndNext()" class="btn btn-success">Save & Next</button> <br>
+      <button 
+  [ngClass]="{'save-button': !saveButtonActive, 'save-button-active': saveButtonActive}" 
+  (click)="saveAndNext()">
+  {{ saveButtonActive ? 'Processing...' : 'Save & Next' }}
+  <span *ngIf="saveButtonActive" class="loading-indicator"></span>
+</button> <br>
     </div>
   </div>
 </body>

@@ -1,0 +1,56 @@
+<div class="dashboard-container">
+    <div class="dashboard-left">
+      <h2 class="dashboard-title">Admin-Dashboard</h2>
+  
+      <!-- Loading and error states with ngIf -->
+      <ng-container *ngIf="loading; else dataContent">
+        <div class="loading-text">Loading...</div>
+      </ng-container>
+      
+      <ng-template #dataContent>
+        <div *ngIf="error" class="error-text">{{ error }}</div>
+        
+        <ng-container *ngIf="!error">
+          <div>Total Dataset Points: {{ totalDatasetPoints }}</div>
+          
+          <div class="annotator-info">
+            <p class="info-text">Annotated: {{ counts?.annotatedFiles }}</p>
+            <p class="text-lg">Non-Relevant: {{ counts?.totalNonRelevantFiles }}</p>
+            <p class="info-text">Total Annotated:  {{ (counts?.annotatedFiles || 0) + (counts?.totalNonRelevantFiles || 0) }}</p>
+            
+            <!-- Only render this if we have annotators -->
+            <div *ngIf="(counts?.annotatedByCounts | keyvalue)?.length" class="annotator-list">
+              <h3 class="list-title">Individual Annotated By Counts:</h3>
+              <div class="card-container">
+                <div *ngFor="let annotator of counts?.annotatedByCounts | keyvalue" class="annotator-card">
+                  <div class="card">
+                    <p>{{ annotatorUsernames[annotator.key] || 'Unknown' }}</p>
+                    <h3>{{ annotator.key }}</h3>
+                    <p>Count: {{ annotator.value }}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+  
+          <!-- Only render chart if we have data -->
+  <div *ngIf="lineChartData?.datasets?.length" class="chart-container">
+    <canvas 
+      baseChart
+      [datasets]="lineChartData.datasets"
+      [labels]="lineChartData.labels"
+      [options]="lineChartOptions"
+      [type]="'line'">
+    </canvas>
+  </div>
+  
+        </ng-container>
+      </ng-template>
+    </div>
+  
+    <div class="dashboard-right">
+      <canvas id="pieChart" class="chart-canvas"></canvas>
+    </div>
+  </div>
+  
+  

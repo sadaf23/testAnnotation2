@@ -10,7 +10,8 @@
 
   <!-- Annotation Options -->
   <div *ngFor="let option of annotationOptions">
-      <p>{{ option.name }}</p>
-      <button (click)="selectOption(option)">CLICK</button>
-  </div>
+    <p>{{ option.name }}</p>
+    <button (click)="selectOption(option)">CLICK</button>
+</div>
+<button *ngIf="isAdmin()" (click)="navigateToAdminBoard()">Admin Board</button>
 </div>

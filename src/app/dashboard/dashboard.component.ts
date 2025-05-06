@@ -60,7 +60,7 @@ export class DashboardComponent implements OnInit {
 }
 isAdmin(): boolean {
   const username = localStorage.getItem("username");
-  return username === 'admin';
+  return username === 'admin' || username === 'drannotatorS';
 }
 navigateToAdminBoard() {
   console.log("Navigating to Admin Board");

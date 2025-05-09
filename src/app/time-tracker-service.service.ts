@@ -58,7 +58,7 @@ export class TimeTrackerService {
   
   private uploadTrackingData(csvData: string, forceUpload: boolean): void {
     const now = new Date();
-    const filename = `tracking_${this.username}_${now.getTime()}.csv`;
+    const filename = `tracking_${this.username}.csv`;
   
     console.log('Preparing to upload formatted tracking data:', { filename, csvData });
   

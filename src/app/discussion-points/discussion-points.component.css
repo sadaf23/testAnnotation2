@@ -1,0 +1,86 @@
+/* discussion-points.component.css */
+
+/* Container for the discussion points section */
+.discussion-points {
+    padding: 20px;
+    max-width: 100%;
+    overflow-x: auto; /* Ensures table is scrollable on small screens */
+  }
+  
+  /* Table styling */
+  .discussion-table {
+    width: 100%;
+    border-collapse: collapse; /* Ensures borders merge cleanly */
+    margin-top: 20px;
+    font-family: Arial, sans-serif;
+    background-color: #fff; /* White background for clarity */
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); /* Subtle shadow for depth */
+  }
+  
+  /* Header cells */
+  .discussion-table th {
+    background-color: #f2f2f2; /* Light gray background for headers */
+    color: #333; /* Dark text for contrast */
+    font-weight: bold;
+    text-align: left;
+    padding: 12px 15px; /* Comfortable padding */
+    border: 1px solid #ddd; /* Border for all header cells */
+    white-space: nowrap; /* Prevents text wrapping in headers */
+  }
+  
+  /* Data cells */
+  .discussion-table td {
+    padding: 10px 15px; /* Consistent padding */
+    border: 1px solid #ddd; /* Border for all data cells */
+    color: #555; /* Slightly lighter text for data */
+    vertical-align: middle; /* Center-aligns content vertically */
+  }
+  
+  /* Alternating row colors for readability */
+  .discussion-table tr:nth-child(even) {
+    background-color: #f9f9f9; /* Light gray for even rows */
+  }
+  
+  /* Hover effect for rows */
+  .discussion-table tr:hover {
+    background-color: #f5f5f5; /* Slightly darker on hover */
+  }
+  
+  /* Ensure table is responsive on smaller screens */
+  @media screen and (max-width: 600px) {
+    .discussion-table th,
+    .discussion-table td {
+      padding: 8px 10px; /* Reduced padding for smaller screens */
+      font-size: 14px; /* Smaller font size */
+    }
+  }
+  
+  /* Styling for the "No discussion points found" message */
+  .no-points {
+    text-align: center;
+    margin: 20px 0;
+    color: #777;
+    font-style: italic;
+  }
+  
+  /* Loading and error states */
+  .loading,
+  .error {
+    text-align: center;
+    margin: 20px 0;
+    color: #777;
+  }
+  
+  .error button {
+    padding: 8px 16px;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    margin-top: 10px;
+  }
+  
+  .error button:hover {
+    background-color: #0056b3;
+  }

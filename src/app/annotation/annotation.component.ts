@@ -5,24 +5,11 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { TimeTrackerService } from '../time-tracker-service.service';
 import { AuthService } from '../auth.service';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { forkJoin, Subscription } from 'rxjs';
 import { AdminBoardService, FileCountResponse } from '../admin-board.service';
+import { Description, ImageResponse, AnnotatedData, ImageOptions,AnnotatorCount } from '../interfaces'
 
-interface AnnotatedData {
-  [key: string]: any;
-}
-
-interface ImageOptions {
-  format?: 'webp' | 'jpeg' | 'png' | 'avif';
-  width?: number;
-  quality?: number;
-}
-
-interface AnnotatorCount {
-  name: string;
-  count: number;
-}
 
 @Component({
   selector: 'app-annotation',
@@ -77,13 +64,18 @@ export class AnnotationComponent implements OnInit, OnDestroy {
   // Image dimensions for layout stability
   imageWidth: number = 800;
   imageHeight: number = 600;
+
+  showDiscussionInput: boolean = false; // New property to toggle discussion textbox
+  discussionPoint: string = ''; // New property for discussion point input
   
   counts: FileCountResponse | null = null;
   currentAnnotatorCount: number = 0;
 
-  private createdBlobUrls: string[] = [];
-  pendingSaves: Map<string, boolean> = new Map();
-  lastSavedAnnotation: string | null = null;
+  private fromDiscussion: boolean = false; // Flag to track if loaded from discussion
+private navigationState: any = null; // Store router state
+searchInput: string = ''; // Input for partial filename
+searchResults: { jsonFiles: { name: string, fullPath: string }[], imageFiles: { name: string, fullPath: string }[] } = { jsonFiles: [], imageFiles: [] };
+selectedFile: { jsonFile?: string, imageFile?: string } | null = null; 
 
   constructor(
     private route: ActivatedRoute,
@@ -92,10 +84,12 @@ export class AnnotationComponent implements OnInit, OnDestroy {
     private http: HttpClient, 
     private timeTracker: TimeTrackerService,
     private changeDetector: ChangeDetectorRef,
-    private adminBoardService: AdminBoardService
+    private adminBoardService: AdminBoardService,
+    private router: Router
   ) {
     // Check connection quality if available
     this.checkConnectionSpeed();
+    
   }
 
   ngOnInit() {
@@ -106,20 +100,32 @@ export class AnnotationComponent implements OnInit, OnDestroy {
 
     this.timeTracker.startSessionTracking();
 
+    // Capture navigation state
+    this.navigationState = history.state;
+    this.fromDiscussion = !!this.navigationState?.partialName;
+
     const routeSubscription = this.route.params.subscribe(params => {
-      if (params['id']) {
-        this.annotatorId = params['id'];
-        localStorage.setItem('annotatorId', this.annotatorId);
-      }
-      console.log('Using annotator ID:', this.annotatorId);
-      this.loadAllData();
+        if (params['id']) {
+            this.annotatorId = params['id'];
+            localStorage.setItem('annotatorId', this.annotatorId);
+        }
+        console.log('Using annotator ID:', this.annotatorId);
+
+        if (this.fromDiscussion && this.navigationState?.partialName) {
+            // Load files by partial filename
+            this.searchInput = this.navigationState.partialName;
+            console.log('Searching with partial name:', this.searchInput);
+            this.searchFiles();
+        } else {
+            // Default behavior
+            this.loadAllData();
+        }
     });
 
-    this.checkPendingSaves();
     this.subscriptions.add(routeSubscription);
     this.loadDailyAnnotationCount();
     this.fetchFileCounts();
-  }
+}
 
   ngAfterViewChecked(): void {
     if (!this.textareasResized) {
@@ -145,17 +151,148 @@ export class AnnotationComponent implements OnInit, OnDestroy {
     this.changeDetector.detectChanges();
   }
 
+  discussionPoints(){
+    this.router.navigate(["/discussion-points"]);
+  }
+
   loadAllData(): void {
     this.loading = true;
     this.error = null;
-    
+  
     // Save annotator ID to localStorage for persistence
     localStorage.setItem('annotatorId', this.annotatorId);
-    
+  
     this.loadDailyAnnotationCount();
-    // Load annotation data and progress data in parallel
-    this.loadAnnotationData();
+  
+    if (this.fromDiscussion && this.navigationState?.image_id) {
+      // Load specific image by ID
+    } else {
+      // Default behavior: Load random annotation data
+      this.loadAnnotationData();
+    }
   }
+
+  searchFiles(): void {
+    if (!this.searchInput.trim()) {
+        alert('Please enter a partial filename to search.');
+        this.error = 'Enter a filename to search for images and descriptions.';
+        this.loading = false;
+        this.changeDetector.markForCheck();
+        return;
+    }
+
+    this.loading = true;
+    this.error = null;
+    this.searchResults = { jsonFiles: [], imageFiles: [] };
+    this.selectedFile = null;
+
+    console.log(`Searching files with partial name: ${this.searchInput}`);
+
+    const searchSubscription = this.annotationService.searchFiles(this.searchInput, this.annotatorId).subscribe({
+        next: (response) => {
+            console.log('Search files response:', JSON.stringify(response, null, 2));
+            if (response.success && response.data) {
+                this.searchResults = response.data;
+                if (this.searchResults.jsonFiles.length === 0 && this.searchResults.imageFiles.length === 0) {
+                    this.error = `No files found matching "${this.searchInput}". Please try a different search term.`;
+                    console.log(`No matches for ${this.searchInput}. Prompting manual search.`);
+                    this.searchInput = '';
+                    this.fromDiscussion = false;
+                    this.navigationState = null;
+                } else if (this.searchResults.jsonFiles.length === 1 && this.searchResults.imageFiles.length === 1) {
+                    console.log(`Auto-selecting files: JSON=${this.searchResults.jsonFiles[0].name}, Image=${this.searchResults.imageFiles[0].name}`);
+                    this.selectFile(this.searchResults.jsonFiles[0].name, this.searchResults.imageFiles[0].name);
+                } else {
+                    console.log(`Multiple matches found: ${this.searchResults.jsonFiles.length} JSON, ${this.searchResults.imageFiles.length} images`);
+                    this.error = `Multiple files found. Please select one below.`;
+                }
+            } else {
+                this.error = `Failed to search files for "${this.searchInput}". Please try again.`;
+                console.log(`Search failed for ${this.searchInput}:`, response);
+                this.searchInput = '';
+                this.fromDiscussion = false;
+                this.navigationState = null;
+            }
+            this.loading = false;
+            this.changeDetector.markForCheck();
+        },
+        error: (err) => {
+            console.error('Error searching files:', err);
+            this.error = `Server error while searching for "${this.searchInput}". Please try again or contact support.`;
+            this.searchInput = '';
+            this.fromDiscussion = false;
+            this.navigationState = null;
+            this.loading = false;
+            this.changeDetector.markForCheck();
+        }
+    });
+
+    this.subscriptions.add(searchSubscription);
+}
+
+selectFile(jsonFile: string, imageFile: string): void {
+  console.log(`Selecting files: JSON=${jsonFile}, Image=${imageFile}`);
+  this.selectedFile = { jsonFile, imageFile };
+  this.assignedJsonFile = jsonFile;
+  this.assignedImageFile = imageFile;
+  this.loading = true;
+  
+  // Extract the base filename from the path
+  const baseFilename = jsonFile.split('/').pop();
+  if (!baseFilename) {
+    console.error('Invalid filename format');
+    this.loading = false;
+    return;
+  }
+
+  // Load JSON data
+  console.log(`Loading JSON data for ${jsonFile}`);
+  const jsonSubscription = this.annotationService.getJsonData(baseFilename, this.annotatorId || undefined).subscribe({
+    next: (data) => {
+      console.log('JSON data loaded:', data);
+      this.jsonData = data;
+      
+      // Create key-value pairs for display
+      this.jsonKeyValues = Object.entries(this.jsonData).map(([key, value]) => ({
+        key,
+        value: typeof value === 'string' ? value : JSON.stringify(value)
+      }));
+      
+      // Also update the annotationData object that the template uses
+      this.annotationData = {
+        description: this.jsonData,
+        filename: baseFilename,
+        images: [imageFile]
+      };
+      
+      // Mark description as loaded
+      this.descriptionLoaded = true;
+      this.checkLoadingComplete();
+      this.changeDetector.markForCheck();
+    },
+    error: (error) => {
+      console.error('Error loading JSON data:', error);
+      this.loading = false;
+      this.error = 'Failed to load JSON data. Please try again.';
+      this.changeDetector.markForCheck();
+    }
+  });
+  
+  this.subscriptions.add(jsonSubscription);
+
+  // Load image data
+  console.log(`Loading image data for ${imageFile}`);
+  this.images = [imageFile];
+  this.currentImageIndex = 0;
+  this.loadImageData(imageFile);
+
+  // Reset search state
+  this.searchResults = { jsonFiles: [], imageFiles: [] };
+  this.searchInput = '';
+  this.fromDiscussion = false;
+  this.navigationState = null;
+  this.changeDetector.markForCheck();
+}
   
   loadAnnotationData(preloadedData?: any): void {
     this.loading = true;
@@ -313,76 +450,65 @@ export class AnnotationComponent implements OnInit, OnDestroy {
   loadImageData(imageName: string): void {
     this.imageLoading = true;
     
-    // Check if this image was preloaded
     const preloadedUrl = this.preloadedImages.get(imageName);
     
     if (preloadedUrl) {
-      console.log(`Using preloaded image for ${imageName}`);
-      // Add to tracking array for cleanup
-      this.createdBlobUrls.push(preloadedUrl);
-      this.imageUrl = preloadedUrl;
-      // Remove from the preloaded map to free memory
-      this.preloadedImages.delete(imageName);
-      
-      // Create a temporary image to check when it's loaded
-      const img = new Image();
-      img.onload = () => {
-        this.imageLoading = false;
-        this.imageLoaded = true;
-        this.checkLoadingComplete();
-        this.changeDetector.markForCheck();
-      };
-      img.src = this.imageUrl;
-      
-      this.changeDetector.markForCheck();
-    } else {
-      // Fall back to regular loading if not preloaded
-      console.log(`Image ${imageName} not preloaded, loading optimized version`);
-      
-      const imageSubscription = this.annotationService.getImageUrl(
-        this.annotatorId, 
-        imageName,
-        {
-          format: 'webp',
-          width: this.getOptimalImageWidth(),
-          quality: 80
-        }
-      ).subscribe({
-        next: (blob) => {
-          // Revoke old URL if it exists to prevent memory leaks
-          if (this.imageUrl && this.imageUrl.startsWith('blob:')) {
-            URL.revokeObjectURL(this.imageUrl);
-          }
-          
-          const blobUrl = URL.createObjectURL(blob);
-          // Add to tracking array
-          this.createdBlobUrls.push(blobUrl);
-          this.imageUrl = blobUrl;
-          
-          // Create a temporary image to check when it's loaded
-          const img = new Image();
-          img.onload = () => {
+        console.log(`Using preloaded image for ${imageName}`);
+        this.imageUrl = preloadedUrl;
+        this.preloadedImages.delete(imageName);
+        
+        const img = new Image();
+        img.onload = () => {
             this.imageLoading = false;
             this.imageLoaded = true;
             this.checkLoadingComplete();
             this.changeDetector.markForCheck();
-          };
-          img.src = this.imageUrl;
-          
-          this.changeDetector.markForCheck();
-        },
-        error: (err) => {
-          console.error('Error loading image:', err);
-          this.error = 'Failed to load image. Please try again.';
-          this.imageLoading = false;
-          this.checkLoadingComplete();
-          this.changeDetector.markForCheck();
-        }
-      });
-      
-      this.subscriptions.add(imageSubscription);
+        };
+        img.src = this.imageUrl;
+        
+        this.changeDetector.markForCheck();
+    } else {
+        console.log(`Image ${imageName} not preloaded, loading optimized version`);
+        
+        const imageSubscription = this.annotationService.getImageUrl(
+            this.annotatorId, 
+            imageName,
+            {
+                format: 'webp',
+                width: this.getOptimalImageWidth(),
+                quality: 80
+            }
+        ).subscribe({
+            next: (blob) => {
+                if (this.imageUrl && this.imageUrl.startsWith('blob:')) {
+                    URL.revokeObjectURL(this.imageUrl);
+                }
+                
+                this.imageUrl = URL.createObjectURL(blob);
+                
+                const img = new Image();
+                img.onload = () => {
+                    this.imageLoading = false;
+                    this.imageLoaded = true;
+                    this.checkLoadingComplete();
+                    this.changeDetector.markForCheck();
+                };
+                img.src = this.imageUrl;
+                
+                this.changeDetector.markForCheck();
+            },
+            error: (err) => {
+                console.error('Error loading image:', err);
+                this.error = 'Failed to load image. Please try again.';
+                this.imageLoading = false;
+                this.checkLoadingComplete();
+                this.changeDetector.markForCheck();
+            }
+        });
+        
+        this.subscriptions.add(imageSubscription);
     }
-  }
+}
 
   checkLoadingComplete(): void {
     if (this.imageLoaded && this.descriptionLoaded) {
@@ -508,185 +634,47 @@ export class AnnotationComponent implements OnInit, OnDestroy {
       localStorage.setItem('dailyAnnotationCount', '0');
     }
   }
+
+  toggleDiscussionInput(): void {
+    this.showDiscussionInput = !this.showDiscussionInput;
+    this.discussionPoint = ''; // Reset discussion point when toggling
+    this.changeDetector.markForCheck();
+  }
+
+  saveForDiscussion(): void {
+    if (!this.discussionPoint.trim()) {
+        alert('Please enter a discussion point.');
+        return;
+    }
+
+    let baseFilename = this.assignedJsonFile || `discussion_${Date.now()}.json`;
+    if (baseFilename.includes('_')) {
+        baseFilename = baseFilename.split('_')[0] + '.json';
+    }
+
+    const discussionData = {
+        imageUrl: this.imageUrl,
+        description: { ...this.jsonData, image_id: baseFilename.split('.').slice(0, -1).join('.') },
+        discussionPoint: this.discussionPoint,
+        username: this.username,
+        date: new Date().toISOString(),
+        annotatorId: this.annotatorId,
+        fileName: baseFilename
+    };
+    // ... (rest unchanged)
+}
+
   
   saveAndNext() {
-    // Check if already processing to prevent double submissions
-    if (this.saveButtonActive) {
-      console.log('Save in progress, please wait');
-      return;
-    }
-    
     // Set button to active state
     this.saveButtonActive = true;
     this.imageLoaded = false;
     this.descriptionLoaded = false;
     this.changeDetector.markForCheck();
     
-    // Generate a unique save ID to track this specific save operation
-    const saveId = `save_${Date.now()}`;
-    this.pendingSaves.set(saveId, true);
-    
-    // Add a timeout to reset UI if submission takes too long
-    const timeoutId = setTimeout(() => {
-      if (this.pendingSaves.get(saveId)) {
-        console.warn('Save operation timed out after 30 seconds');
-        this.saveButtonActive = false;
-        this.changeDetector.markForCheck();
-        
-        // Show a more detailed alert with options
-        if (confirm('The save operation is taking longer than expected. Would you like to wait longer? (OK to wait, Cancel to abort)')) {
-          // User wants to wait longer - add another 30 seconds
-          const extendedTimeoutId = setTimeout(() => {
-            if (this.pendingSaves.get(saveId)) {
-              this.pendingSaves.delete(saveId);
-              alert('Save operation could not complete. Please check network connection and try again.');
-              this.saveButtonActive = false;
-              this.changeDetector.markForCheck();
-            }
-          }, 30000);
-          
-          this.subscriptions.add({
-            unsubscribe: () => clearTimeout(extendedTimeoutId)
-          });
-        } else {
-          // User doesn't want to wait - mark this save as aborted
-          this.pendingSaves.delete(saveId);
-          alert('Save operation aborted. Your changes were not saved. Please try again.');
-          this.saveButtonActive = false;
-          this.changeDetector.markForCheck();
-        }
-      }
-    }, 30000); // 30 second timeout
-    
-    // Add timeout to subscription for cleanup
-    this.subscriptions.add({
-      unsubscribe: () => clearTimeout(timeoutId)
-    });
-    
-    // Get current annotation ID for tracking
-    const currentAnnotationId = this.getAnnotationIdentifier();
-    
-    // Call the improved submit method with tracking
-    this.submitAnnotationWithTracking(this.jsonData, saveId, currentAnnotationId);
+    // Call the existing submit method
+    this.submitAnnotation(this.jsonData);
   }
-
-  getAnnotationIdentifier(): string {
-    // Create a unique ID for the current annotation
-    if (this.annotationData && this.annotationData.filename) {
-      return this.annotationData.filename;
-    } else if (this.assignedJsonFile) {
-      const parts = this.assignedJsonFile.split('/');
-      if (parts.length > 0) {
-        return parts[parts.length - 1];
-      }
-    }
-    return `annotation_${Date.now()}`;
-  }
-  
-  submitAnnotationWithTracking(annotationData: any, saveId: string, annotationId: string): void {
-    // Required field validation, metadata setting, etc. (existing code)...
-    
-    console.log(`Submitting annotation ${annotationId} with tracking ID ${saveId}`);
-    
-    const submitSubscription = this.annotationService.submitAnnotation(this.annotatorId, this.jsonData)
-      .subscribe({
-        next: (response) => {
-          console.log(`Annotation ${annotationId} submitted successfully with tracking ID ${saveId}`);
-          
-          // Mark this save as completed
-          this.pendingSaves.delete(saveId);
-          this.lastSavedAnnotation = annotationId;
-          
-          // Store in session storage for persistence
-          try {
-            sessionStorage.setItem('lastSavedAnnotation', annotationId);
-            sessionStorage.setItem('lastSaveTime', new Date().toISOString());
-          } catch (e) {
-            console.warn('Could not store save info in session storage:', e);
-          }
-          
-          // Show success with annotation ID
-          this.showSuccessPopup(`Annotation ${annotationId} saved successfully`);
-          
-          // Reset UI state
-          this.saveButtonActive = false;
-          
-          // Proceed with loading next annotation
-          this.timeTracker.trackSuccessfulSave();
-          this.additionalDiagnosis = '';
-          this.additionalObservation = '';
-          this.getAnnotatorProgress();
-          this.updateAnnotationCounts();
-          
-          try {
-            if (this.nextAnnotationData) {
-              this.loadAnnotationData(this.nextAnnotationData);
-              this.nextAnnotationData = null;
-            } else {
-              this.loadAnnotationData();
-            }
-          } catch (error) {
-            console.error('Error loading next annotation:', error);
-            this.saveButtonActive = false;
-            this.imageLoaded = true;
-            this.descriptionLoaded = true;
-            alert('Error loading next annotation. Please refresh the page.');
-          }
-          
-          this.changeDetector.markForCheck();
-        },
-        error: (err) => {
-          console.error(`Error submitting annotation ${annotationId} with tracking ID ${saveId}:`, err);
-          
-          // Mark this save as failed
-          this.pendingSaves.delete(saveId);
-          
-          alert(`Error saving annotation ${annotationId}: ${err.message || 'Unknown error'}`);
-          
-          // Reset UI state
-          this.saveButtonActive = false;
-          this.imageLoaded = true;
-          this.descriptionLoaded = true;
-          this.changeDetector.markForCheck();
-        }
-      });
-    
-    this.subscriptions.add(submitSubscription);
-  }
-  
-  updateAnnotationCounts(): void {
-    this.sessionAnnotationCount++;
-    this.dailyAnnotationCount++;
-    
-    // Store updated daily count in localStorage
-    const today = new Date().toISOString().split('T')[0];
-    localStorage.setItem('lastAnnotationDate', today);
-    localStorage.setItem('dailyAnnotationCount', this.dailyAnnotationCount.toString());
-  }
-  
-  // 6. Add a verification method to check if an annotation was saved
-  checkIfSaved(annotationId: string): boolean {
-    return this.lastSavedAnnotation === annotationId || 
-           sessionStorage.getItem('lastSavedAnnotation') === annotationId;
-  }
-  
-  // 7. Add a method to check pending saves on component initialization
-  checkPendingSaves(): void {
-    const lastSavedAnnotation = sessionStorage.getItem('lastSavedAnnotation');
-    const lastSaveTime = sessionStorage.getItem('lastSaveTime');
-    
-    if (lastSavedAnnotation && lastSaveTime) {
-      const saveTime = new Date(lastSaveTime);
-      const currentTime = new Date();
-      const timeDiff = (currentTime.getTime() - saveTime.getTime()) / 1000; // in seconds
-      
-      if (timeDiff < 600) { // If save was in the last 10 minutes
-        console.log(`Last saved annotation was ${lastSavedAnnotation} at ${saveTime.toLocaleTimeString()}`);
-        this.lastSavedAnnotation = lastSavedAnnotation;
-      }
-    }
-  }
-  
 
   submitAnnotation(annotationData: any): void {
     // Required field keys to validate
@@ -755,33 +743,29 @@ export class AnnotationComponent implements OnInit, OnDestroy {
   
     console.log(`Submitting annotation for file: ${baseFilename} by annotator: ${this.annotatorId}`);
   
-  const submitSubscription = this.annotationService.submitAnnotation(this.annotatorId, this.jsonData)
-    .subscribe({
-      next: (response) => {
-        console.log('Annotation submitted successfully', response);
-        this.timeTracker.trackSuccessfulSave();
-        
-        // Clear form
-        this.additionalDiagnosis = '';
-        this.additionalObservation = '';
-        
-        this.showSuccessPopup();
-        
-        // Update progress
-        this.getAnnotatorProgress();
-        this.sessionAnnotationCount++;
+    const submitSubscription = this.annotationService.submitAnnotation(this.annotatorId, this.jsonData)
+      .subscribe({
+        next: (response) => {
+          console.log('Annotation submitted successfully', response);
+          this.timeTracker.trackSuccessfulSave();
+  
+          // Clear form
+          this.additionalDiagnosis = '';
+          this.additionalObservation = '';
+  
+          this.showSuccessPopup();
+
+          // Update progress
+          this.getAnnotatorProgress();
+          this.sessionAnnotationCount++;
         this.dailyAnnotationCount++;
         
         // Store updated daily count in localStorage
         const today = new Date().toISOString().split('T')[0];
         localStorage.setItem('lastAnnotationDate', today);
         localStorage.setItem('dailyAnnotationCount', this.dailyAnnotationCount.toString());
-        
-        // Reset save button state
-        this.saveButtonActive = false;
-        
-        // Load new annotation with safety check
-        try {
+  
+          // Load new annotation
           if (this.nextAnnotationData) {
             this.loadAnnotationData(this.nextAnnotationData);
             this.nextAnnotationData = null; // Clear after using
@@ -789,29 +773,17 @@ export class AnnotationComponent implements OnInit, OnDestroy {
             // Fallback in case preloaded data isn't available
             this.loadAnnotationData();
           }
-        } catch (error) {
-          console.error('Error loading next annotation:', error);
-          this.saveButtonActive = false;
-          this.imageLoaded = true;
-          this.descriptionLoaded = true;
-          alert('Error loading next annotation. Please refresh the page.');
+          
+          this.changeDetector.markForCheck();
+        },
+        error: (err) => {
+          console.error('Error submitting annotation:', err);
+          alert(`Error submitting annotation: ${err.message || 'Unknown error'}`);
         }
-        
-        this.changeDetector.markForCheck();
-      },
-      error: (err) => {
-        console.error('Error submitting annotation:', err);
-        alert(`Error submitting annotation: ${err.message || 'Unknown error'}`);
-        // Reset UI state
-        this.saveButtonActive = false;
-        this.imageLoaded = true;
-        this.descriptionLoaded = true;
-        this.changeDetector.markForCheck();
-      }
-    });
-  
-  this.subscriptions.add(submitSubscription);
-}
+      });
+    
+    this.subscriptions.add(submitSubscription);
+  }
 
   previousAnnotation(): void {
     if (this.currentHistoryIndex > 0) {
@@ -831,43 +803,13 @@ export class AnnotationComponent implements OnInit, OnDestroy {
     }
   }
 
-  @HostListener('window:keydown.F5', ['$event'])
-handleRefresh(event: KeyboardEvent) {
-  event.preventDefault();
-  this.recoverFromStuckState();
-}
-
-recoverFromStuckState(): void {
-  console.log('Attempting to recover from stuck state...');
-  // Reset all state variables
-  this.saveButtonActive = false;
-  this.imageLoading = false;
-  this.imageLoaded = true;
-  this.descriptionLoaded = true;
-  
-  // Clean up resources that might be causing the hang
-  this.createdBlobUrls.forEach(url => {
-    try {
-      URL.revokeObjectURL(url);
-    } catch (e) {
-      console.warn('Error revoking URL:', e);
-    }
-  });
-  this.createdBlobUrls = [];
-  
-  // Force change detection
-  this.changeDetector.markForCheck();
-  
-  // Try to load a fresh annotation
-  this.loadAnnotationData();
-  
-  alert('Recovery attempted. If issues persist, please refresh the browser.');
-}
-
   @HostListener('window:beforeunload', ['$event'])
-  beforeUnloadHandler(event: Event) {
+beforeUnloadHandler(event: Event) {
+  // Only stop tracking if closing the browser tab/window
+  if (!this.router.navigated) {
     this.timeTracker.stopSessionTracking();
   }
+}
   
   @HostListener('window:resize', ['$event'])
   onResize(event: Event) {
@@ -885,11 +827,11 @@ recoverFromStuckState(): void {
 
   logout() {
     console.log('Logout button clicked');
-    // Force tracking upload on logout
     this.timeTracker.stopSessionTracking(true);
     this.authService.logout();
+    this.router.navigate(['/login']);
   }
-
+  
   markNonRelevant() {
     // Get filename from annotationData
     let fileName = '';
@@ -1069,32 +1011,21 @@ getTotalAnnotations(): number {
   return Object.values(this.counts.annotatedByCounts).reduce((sum, count) => sum + count, 0);
 }
 
-ngOnDestroy(): void {
-  // Clean up all tracked blob URLs
-  this.createdBlobUrls.forEach(url => {
-    try {
+  ngOnDestroy(): void {
+    // Clean up any object URLs to prevent memory leaks
+    this.preloadedImages.forEach((url) => {
       URL.revokeObjectURL(url);
-    } catch (e) {
-      console.warn('Error revoking URL:', e);
+    });
+    this.preloadedImages.clear();
+    
+    if (this.imageUrl && this.imageUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(this.imageUrl);
     }
-  });
-  this.createdBlobUrls = [];
-  
-  // Clean up any preloaded images
-  this.preloadedImages.forEach((url) => {
-    try {
-      URL.revokeObjectURL(url);
-    } catch (e) {
-      console.warn('Error revoking preloaded URL:', e);
-    }
-  });
-  this.preloadedImages.clear();
-  
-  // Cancel all subscriptions to prevent memory leaks
-  this.subscriptions.unsubscribe();
-  
-  // Stop tracking session
-  this.timeTracker.stopSessionTracking();
-}
-
+    
+    // Cancel all subscriptions to prevent memory leaks
+    this.subscriptions.unsubscribe();
+    
+    // Stop tracking session
+    // this.timeTracker.stopSessionTracking();
+  }
 }

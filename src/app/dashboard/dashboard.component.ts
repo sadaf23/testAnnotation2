@@ -60,12 +60,15 @@ export class DashboardComponent implements OnInit {
 }
 isAdmin(): boolean {
   const username = localStorage.getItem("username");
-  return username === 'admin' || username === 'drannotatorS';
+  return username === 'admin';
 }
 navigateToAdminBoard() {
   console.log("Navigating to Admin Board");
   const username = localStorage.getItem("username");
   console.log("Current user:", username);
   this.router.navigate(["/admin-board"]);
+}
+discussionPoints(){
+  this.router.navigate(["/discussion-points"]);
 }
 }

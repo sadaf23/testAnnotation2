@@ -1,3 +1,6 @@
+<div style="position: absolute; top: 18px; left: 80%; font-weight: bold; z-index: 100; background-color: rgba(255, 255, 255, 0.7); padding: 5px; border-radius: 4px;" >
+    <button (click)="discussionPoints()" class="btn btn-link">View Discussion Points</button>  
+    </div>
 <div class="dashboard-container">
   <!-- Dropdown for logout + time tracking -->
   <!-- <div class="logout-dropdown">
@@ -7,11 +10,11 @@
           <p>✅ Annotations: {{ annotationsCount }}</p>
       </div>
   </div> -->
-
+  
   <!-- Annotation Options -->
   <div *ngFor="let option of annotationOptions">
-    <p>{{ option.name }}</p>
-    <button (click)="selectOption(option)">CLICK</button>
-</div>
-<button *ngIf="isAdmin()" (click)="navigateToAdminBoard()">Admin Board</button>
+      <p>{{ option.name }}</p>
+      <button (click)="selectOption(option)">CLICK</button>
+  </div>
+  <button *ngIf="isAdmin()" (click)="navigateToAdminBoard()">Admin Board</button>
 </div>

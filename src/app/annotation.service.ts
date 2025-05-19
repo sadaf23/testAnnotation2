@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
 import { map, Observable, catchError, of, throwError, shareReplay } from 'rxjs';
+import { ApiResponse, ImageResponse} from '../app/interfaces'
 
 @Injectable({
   providedIn: 'root'
@@ -115,7 +116,6 @@ export class AnnotationService {
       );
     }
   
-  // In annotation.service.ts
   submitAnnotation(annotatorId: string, annotationData: any): Observable<any> {
     const url = `${this.prodUrl}/submit`;
     
@@ -181,6 +181,30 @@ export class AnnotationService {
     }
   }
 
+  saveDiscussionPoint(discussionData: any): Observable<any> {
+    return this.http.post(`${this.prodUrl}/discussion/save`, discussionData);
+  }
+
+  getDiscussionPoints(): Observable<ApiResponse> {
+    // Get username from localStorage - this will be passed as a route parameter
+    const username = localStorage.getItem('username') || 'Guest';
+
+    // Set headers for tracking/logging purposes
+    const headers = new HttpHeaders({
+      'username': username
+    });
+
+    // Pass the username as route parameter - backend will filter accordingly
+    return this.http.get<ApiResponse>(`${this.prodUrl}/discussion/${username}`, { headers });
+  }
   
-  
+  searchFiles(partialName: string, annotatorId: string): Observable<any> {
+    const url = `${this.prodUrl}/api/search-files/${encodeURIComponent(partialName)}?annotatorId=${annotatorId}`;
+    return this.http.get(url).pipe(
+        catchError(error => {
+            console.error('Error searching files:', error);
+            return of({ success: false, data: { jsonFiles: [], imageFiles: [] } });
+        })
+    );
+}
 }

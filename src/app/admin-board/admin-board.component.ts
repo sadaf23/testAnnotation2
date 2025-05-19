@@ -23,7 +23,11 @@ export class AdminBoardComponent implements OnInit {
     annotator5: 'Dr. Afreen',
     annotator6: 'Dr. Monika',
     drannotatorS: 'Dr. Siddharth',
-    drannotatorR: 'Dr. Ruchir'
+    drannotatorR: 'Dr. Ruchir',
+    annotator7: 'Dr. Lavanya',
+    annotator8: 'Dr. Avita',
+    annotator9: 'Dr. Mohan',
+
   };
   userDailySaveCounts: any[] = [];
   public lineChartData: ChartConfiguration<'line'>['data'] = {

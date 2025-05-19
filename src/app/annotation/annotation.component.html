@@ -8,8 +8,9 @@
   <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/js/bootstrap.min.js"></script>
 </head>
 <body>
-  <div style="position: absolute; top: 20px; left: 68%; font-weight: bold; z-index: 100; background-color: rgba(255, 255, 255, 0.7); padding: 5px; border-radius: 4px;" class="annotator-counts" *ngIf="counts">
-        Total Annotations: {{ currentAnnotatorCount }} 
+  <div style="position: absolute; top: 15px; left: 55%; font-weight: bold; z-index: 100; background-color: rgba(255, 255, 255, 0.7); padding: 5px; border-radius: 4px;" class="annotator-counts" *ngIf="counts">
+    <button (click)="discussionPoints()" class="btn btn-link">View Discussion Points</button>    
+    Total Annotations: {{ currentAnnotatorCount }} 
   </div>
   <div style="position: absolute; top: 10px; left: 80%; font-weight: bold; z-index: 100; background-color: rgba(255, 255, 255, 0.7); padding: 5px; border-radius: 4px;">
     <div>Session Annotations: {{ sessionAnnotationCount }}</div>
@@ -30,6 +31,10 @@
     <div class="description-container" *ngIf="annotationData"><br>
       <p><strong>Note: If the provided data does not appear sufficient or if you are uncertain about what to enter, please write "unknown".</strong></p>
       <button (click)="markNonRelevant()" class="btn-primary">Non-Relevant</button>
+      <button (click)="toggleDiscussionInput()" class="btn btn-info">Save for Discussion</button>
+      <div *ngIf="showDiscussionInput">
+        <textarea [(ngModel)]="discussionPoint" placeholder="Enter discussion point" class="discussion-textarea" rows="4"></textarea>
+        <button (click)="saveForDiscussion()" class="btn btn-primary">Submit Discussion Point</button></div>
       <div id="description">
         <ul>
           <li>

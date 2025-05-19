@@ -1,0 +1,41 @@
+<div class="discussion-container">
+    <!-- Loading state -->
+    <div *ngIf="loading" class="loading">
+      <p>Loading discussion points...</p>
+    </div>
+  
+    <!-- Error state -->
+    <div *ngIf="error && !loading" class="error">
+      <p>{{ error }}</p>
+      <button (click)="loadDiscussionPoints()">Retry</button>
+    </div>
+  
+    <!-- Discussion points table -->
+   <!-- discussion-points.component.html -->
+<div *ngIf="!loading && !error" class="discussion-points">
+  <h2>Discussion Points for {{ username }}</h2>
+  <div *ngIf="discussionPoints.length === 0" class="no-points">
+    <p>No discussion points found.</p>
+  </div>
+  <table *ngIf="discussionPoints.length > 0" class="discussion-table">
+    <thead>
+      <tr>
+        <th>Discussion Point</th>
+        <th>Created By</th>
+        <th>Date</th>
+        <th>File</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr *ngFor="let point of discussionPoints" (click)="viewAnnotation(point)" class="clickable-row">
+        <td>{{ point.discussionPoint }}</td>
+        <td>{{ point.username }}</td>
+        <td>{{ point.date | date: 'medium' }}</td>
+        <td>
+          <a href="javascript:void(0)" (click)="viewAnnotation(point)">{{ point.description?.image_id || 'N/A' }}</a>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+</div>

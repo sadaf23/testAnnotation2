@@ -72,6 +72,11 @@ export class AuthService {
     this.startTime = 0;
   }
   
+  isAdmin(): boolean {
+    // Example: Check if user is admin based on a role stored in localStorage
+    const userRole = localStorage.getItem('userRole');
+    return userRole === 'admin';
+  }
 
   isLoggedIn(): boolean {
     return localStorage.getItem('isLoggedIn') === 'true';

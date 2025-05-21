@@ -6,8 +6,7 @@ import { catchError } from 'rxjs/operators';
 export interface FileCountResponse {
   totalFiles: number;
   annotatedFiles: number;
-  annotatedByCounts: {
-    [annotator: string]: number;}
+  annotatedByCounts: { [key: string]: number };
   totalNonRelevantFiles: number;
 }
 

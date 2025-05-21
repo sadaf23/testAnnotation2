@@ -60,6 +60,7 @@ export class AnnotationComponent implements OnInit, OnDestroy {
   saveButtonActive: boolean = false;
   imageLoaded: boolean = false;
   descriptionLoaded: boolean = false;
+  isLoading: boolean = false;
 
   // Image dimensions for layout stability
   imageWidth: number = 800;
@@ -643,26 +644,85 @@ selectFile(jsonFile: string, imageFile: string): void {
 
   saveForDiscussion(): void {
     if (!this.discussionPoint.trim()) {
-        alert('Please enter a discussion point.');
-        return;
+      alert('Please enter a discussion point.');
+      return;
     }
-
+  
+    // Get the original assigned filename
     let baseFilename = this.assignedJsonFile || `discussion_${Date.now()}.json`;
-    if (baseFilename.includes('_')) {
-        baseFilename = baseFilename.split('_')[0] + '.json';
+    
+    // Extract just the actual filename from the path
+    if (baseFilename.includes('/')) {
+      // Split by / and get the last part (the filename)
+      baseFilename = baseFilename.split('/').pop() || baseFilename;
     }
-
+    if (baseFilename.includes('_')) {
+    }
+  
+    console.log('Extracted baseFilename:', baseFilename);
+    
+    // Extract the image ID from the baseFilename (now it's the actual filename)
+    const imageId = baseFilename.split('.').slice(0, -1).join('.');
+    console.log('Extracted imageId:', imageId);
+  
     const discussionData = {
-        imageUrl: this.imageUrl,
-        description: { ...this.jsonData, image_id: baseFilename.split('.').slice(0, -1).join('.') },
-        discussionPoint: this.discussionPoint,
-        username: this.username,
-        date: new Date().toISOString(),
-        annotatorId: this.annotatorId,
-        fileName: baseFilename
+      imageUrl: this.imageUrl,
+      description: { ...this.jsonData, image_id: imageId },
+      discussionPoint: this.discussionPoint,
+      username: this.username,
+      date: new Date().toISOString(),
+      annotatorId: this.annotatorId,
+      fileName: baseFilename
     };
-    // ... (rest unchanged)
-}
+  
+    console.log('Final discussionData:', discussionData);
+  
+    // Show loading indicator
+    this.isLoading = true;
+    this.imageLoaded = false;
+    this.descriptionLoaded = false;
+    this.changeDetector.markForCheck();
+    
+    // Call the service method to save the discussion point
+    this.annotationService.saveDiscussionPoint(discussionData)
+      .subscribe({
+        next: (response) => {
+          // Handle success
+          this.isLoading = false;
+          // this.timeTracker.trackSuccessfulSave();
+          alert('Discussion point saved successfully!');
+          
+          // Toggle off the discussion input
+          this.showDiscussionInput = false;
+          
+          // Reset form
+          this.resetForm();
+          
+          // Load next annotation data
+          if (this.nextAnnotationData) {
+            this.loadAnnotationData(this.nextAnnotationData);
+            this.nextAnnotationData = null; // Clear after using
+          } else {
+            // Fallback in case preloaded data isn't available
+            this.loadAnnotationData();
+          }
+        },
+        error: (error) => {
+          // Handle error
+          this.isLoading = false;
+          console.error('Error saving discussion:', error);
+          alert('Error saving discussion point. Please try again.');
+          this.changeDetector.markForCheck();
+        }
+      });
+  }
+
+  // Helper method to reset the form after successful submission
+  resetForm(): void {
+    this.discussionPoint = '';
+    // Reset other form fields as needed
+  }
+
 
   
   saveAndNext() {
@@ -753,7 +813,7 @@ selectFile(jsonFile: string, imageFile: string): void {
           this.additionalDiagnosis = '';
           this.additionalObservation = '';
   
-          this.showSuccessPopup();
+          alert("Annotation submitted successfully!");
 
           // Update progress
           this.getAnnotatorProgress();
@@ -874,7 +934,7 @@ beforeUnloadHandler(event: Event) {
         localStorage.setItem('dailyAnnotationCount', this.dailyAnnotationCount.toString());
         
         // Show success popup
-        this.showSuccessPopup('Non-relevant annotation saved successfully');
+        alert('Non-relevant annotation saved successfully');
         
         
         // Load new annotation data
@@ -889,20 +949,6 @@ beforeUnloadHandler(event: Event) {
     this.subscriptions.add(markSubscription);
   }
 
-  showSuccessPopup(message: string = 'Annotation saved successfully') {
-    // Create a div element for the popup
-    const popup = document.createElement('div');
-    popup.className = 'success-popup';
-    popup.innerHTML = `<div class="success-message">${message}</div>`;
-    document.body.appendChild(popup);
-    
-    // Remove the popup after 3 seconds
-    setTimeout(() => {
-      if (popup && document.body.contains(popup)) {
-        document.body.removeChild(popup);
-      }
-    }, 3000);
-  }
 
   @HostListener('input', ['$event.target'])
   autoGrowTextZone(el: EventTarget | null): void {

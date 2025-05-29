@@ -14,7 +14,7 @@ export class DashboardComponent implements OnInit {
   annotationsCount: number = 0;
   annotationOptions = [
     { name: 'Image Annotation' },
-    // { name: 'label Annotation' },
+    { name: 'Image Annotation Experiment 2' },
   ];
 
   constructor(private authService: AuthService, private router: Router) {}
@@ -38,8 +38,8 @@ export class DashboardComponent implements OnInit {
     console.log(`Selected: ${option.name}`);
     const username = localStorage.getItem("username");
 
-    if (option.name === 'label Annotation') {
-      this.router.navigate(["/label-annotation"]); // Navigate to the label annotation route
+    if (option.name === 'Image Annotation Experiment 2') {
+      this.router.navigate(["/image-annotation"]); 
     } else {
       this.router.navigate(["/annotation"]);
     }
@@ -60,7 +60,7 @@ export class DashboardComponent implements OnInit {
 }
 isAdmin(): boolean {
   const username = localStorage.getItem("username");
-  return username === 'admin';
+  return username === 'admin' || username === 'drannotatorS';
 }
 navigateToAdminBoard() {
   console.log("Navigating to Admin Board");

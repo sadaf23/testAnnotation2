@@ -17,8 +17,8 @@ import { DiscussionPointsComponent } from './discussion-points/discussion-points
       loadComponent: () => import('./annotation/annotation.component').then(m => m.AnnotationComponent)
     },
     {
-      path: 'label-annotation',
-      loadComponent: () => import('./label-annotation/label-annotation.component').then(m => m.LabelAnnotationComponent)
+      path: 'image-annotation',
+      loadComponent: () => import('./image-annotation/image-annotation.component').then(m => m.ImageAnnotationComponent)
     },
     {
       path: "admin-board", loadComponent:() => import('./admin-board/admin-board.component').then(m => m.AdminBoardComponent)

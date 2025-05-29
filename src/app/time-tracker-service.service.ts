@@ -1,13 +1,13 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable } from 'rxjs';
+import { Observable, interval } from 'rxjs';
+import { map } from 'rxjs/operators';
 import { environment } from '../environments/environment';
 
 @Injectable({
   providedIn: 'root'
 })
 export class TimeTrackerService {
-  // Use environment-based URL instead of hardcoded localhost
   private backendUrl = 'http://localhost:8080';
   private prodUrl = 'https://backend-268040451245.us-central1.run.app';
   private startTime: Date | null = null;
@@ -15,13 +15,23 @@ export class TimeTrackerService {
   private saveCount = 0;
   private username = '';
 
-  constructor(private http: HttpClient) { }
+  constructor(private http: HttpClient) {
+    this.username = localStorage.getItem('username') || 'anonymous';
+    const storedTime = localStorage.getItem(`totalTimeMinutes_${this.username}`);
+    this.totalTimeMinutes = storedTime ? parseInt(storedTime, 10) : 0;
+  }
 
   startSessionTracking(): void {
+    if (this.startTime) {
+      console.warn('Session tracking already active');
+      return;
+    }
     this.startTime = new Date();
     this.username = localStorage.getItem('username') || 'anonymous';
     this.saveCount = 0;
-    console.log(`Tracking started for user: ${this.username}`);
+    const storedTime = localStorage.getItem(`totalTimeMinutes_${this.username}`);
+    this.totalTimeMinutes = storedTime ? parseInt(storedTime, 10) : 0;
+    console.log(`Tracking started for user: ${this.username}, Total time: ${this.totalTimeMinutes}min`);
   }
 
   trackSuccessfulSave(): void {
@@ -37,25 +47,35 @@ export class TimeTrackerService {
   
     const endTime = new Date();
     const sessionDurationMs = endTime.getTime() - this.startTime.getTime();
-    // Fix: divide by 1000 * 60 (milliseconds in a minute) instead of 1000 * 10
     const sessionDurationMinutes = Math.round(sessionDurationMs / (1000 * 60));
     this.totalTimeMinutes += sessionDurationMinutes;
+  
+    localStorage.setItem(`totalTimeMinutes_${this.username}`, this.totalTimeMinutes.toString());
   
     const loginTime = this.formatTime(this.startTime);
     const logoutTime = this.formatTime(endTime);
     const date = this.formatDate(this.startTime);
   
-    console.log(`Session ended: ${date}, ${loginTime} → ${logoutTime}, Duration: ${sessionDurationMinutes}min, Saves: ${this.saveCount}`);
+    console.log(`Session ended: ${date}, ${loginTime} → ${logoutTime}, Duration: ${sessionDurationMinutes}min, Total: ${this.totalTimeMinutes}min, Saves: ${this.saveCount}`);
   
     const formattedCsv = `date,login_time,logout_time,duration_min,save_count\n${date},${loginTime},${logoutTime},${sessionDurationMinutes}min,${this.saveCount}`;
   
-    // Reset tracking
     this.startTime = null;
   
-    // Upload tracking data
     this.uploadTrackingData(formattedCsv, forceUpload);
   }
-  
+
+  getSessionDuration(): Observable<string> {
+    return interval(1000).pipe(
+      map(() => {
+        const now = new Date();
+        const currentSessionMs = this.startTime ? now.getTime() - this.startTime.getTime() : 0;
+        const totalMs = (this.totalTimeMinutes * 60 * 1000) + currentSessionMs;
+        return this.formatDuration(totalMs);
+      })
+    );
+  }
+
   private uploadTrackingData(csvData: string, forceUpload: boolean): void {
     const now = new Date();
     const filename = `tracking_${this.username}.csv`;
@@ -86,5 +106,11 @@ export class TimeTrackerService {
   private formatDate(date: Date): string {
     return date.toISOString().split('T')[0];
   }
-  
+
+  private formatDuration(durationMs: number): string {
+    const seconds = Math.floor((durationMs / 1000) % 60);
+    const minutes = Math.floor((durationMs / (1000 * 60)) % 60);
+    const hours = Math.floor((durationMs / (1000 * 60 * 60)) % 24);
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  }
 }

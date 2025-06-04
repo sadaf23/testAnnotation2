@@ -77,6 +77,7 @@ private navigationState: any = null; // Store router state
 searchInput: string = ''; // Input for partial filename
 searchResults: { jsonFiles: { name: string, fullPath: string }[], imageFiles: { name: string, fullPath: string }[] } = { jsonFiles: [], imageFiles: [] };
 selectedFile: { jsonFile?: string, imageFile?: string } | null = null; 
+private formStateKey = 'annotationFormStates';
 
   constructor(
     private route: ActivatedRoute,
@@ -340,6 +341,11 @@ selectFile(jsonFile: string, imageFile: string): void {
   }
 
   setAnnotationData(data: any): void {
+    // Save current form state before loading new data
+    if (this.annotationData?.filename) {
+      this.saveCurrentFormState();
+    }
+  
     this.annotationData = data;
     this.textareasResized = false;
   
@@ -347,8 +353,6 @@ selectFile(jsonFile: string, imageFile: string): void {
       this.historyStack.push(data);
       this.currentHistoryIndex = this.historyStack.length - 1;
     }
-  
-    this.annotationData = data;
   
     if (data && data.description) {
       this.jsonKeyValues = Object.entries(data.description).map(
@@ -371,7 +375,132 @@ selectFile(jsonFile: string, imageFile: string): void {
     // Mark description as loaded
     this.descriptionLoaded = true;
     this.checkLoadingComplete();
+  
+    // Restore form state for this annotation if it exists
+    this.restoreFormState();
   }
+  
+
+  private saveCurrentFormState(): void {
+    if (!this.annotationData?.filename) {
+      return;
+    }
+  
+    const currentState = {
+      jsonData: { ...this.jsonData },
+      additionalDiagnosis: this.additionalDiagnosis || '',
+      additionalObservation: this.additionalObservation || '',
+      discussionPoint: this.discussionPoint || '',
+      showDiscussionInput: this.showDiscussionInput || false,
+      timestamp: Date.now()
+    };
+  
+    try {
+      const existingStates = this.getStoredFormStates();
+      existingStates[this.annotationData.filename] = currentState;
+      
+      // Clean up old states (keep only last 10 to prevent localStorage bloat)
+      this.cleanupOldFormStates(existingStates);
+      
+      localStorage.setItem(this.formStateKey, JSON.stringify(existingStates));
+      console.log(`Form state saved for: ${this.annotationData.filename}`, {
+        additionalDiagnosis: currentState.additionalDiagnosis,
+        additionalObservation: currentState.additionalObservation
+      });
+    } catch (error) {
+      console.warn('Failed to save form state to localStorage:', error);
+    }
+  }
+  
+  // Method to restore form state from localStorage
+  private restoreFormState(): void {
+    if (!this.annotationData?.filename) {
+      return;
+    }
+  
+    try {
+      const existingStates = this.getStoredFormStates();
+      const savedState = existingStates[this.annotationData.filename];
+      
+      if (savedState) {
+        // Restore form data
+        this.jsonData = { ...this.jsonData, ...savedState.jsonData };
+        this.additionalDiagnosis = savedState.additionalDiagnosis || '';
+        this.additionalObservation = savedState.additionalObservation || '';
+        this.discussionPoint = savedState.discussionPoint || '';
+        this.showDiscussionInput = savedState.showDiscussionInput || false;
+  
+        // Update jsonKeyValues to reflect restored data
+        if (this.jsonData) {
+          this.jsonKeyValues = Object.entries(this.jsonData).map(
+            ([key, value]) => ({ key, value: String(value) })
+          );
+        }
+  
+        console.log(`Form state restored for: ${this.annotationData.filename}`, {
+          additionalDiagnosis: this.additionalDiagnosis,
+          additionalObservation: this.additionalObservation,
+          hasJsonData: !!this.jsonData
+        });
+        
+        // Force change detection to update the UI
+        this.changeDetector.detectChanges();
+      } else {
+        console.log(`No saved form state found for: ${this.annotationData.filename}`);
+      }
+    } catch (error) {
+      console.warn('Failed to restore form state from localStorage:', error);
+    }
+  }
+  
+  // Helper method to get stored form states
+  private getStoredFormStates(): { [filename: string]: any } {
+    try {
+      const stored = localStorage.getItem(this.formStateKey);
+      return stored ? JSON.parse(stored) : {};
+    } catch (error) {
+      console.warn('Failed to parse stored form states:', error);
+      return {};
+    }
+  }
+  
+  // Helper method to clean up old form states
+  private cleanupOldFormStates(states: { [filename: string]: any }): void {
+    const maxStates = 10;
+    const entries = Object.entries(states);
+    
+    if (entries.length > maxStates) {
+      // Sort by timestamp and keep only the most recent ones
+      const sortedEntries = entries.sort((a, b) => 
+        (b[1].timestamp || 0) - (a[1].timestamp || 0)
+      );
+      
+      const keepEntries = sortedEntries.slice(0, maxStates);
+      
+      // Clear the states object and repopulate with kept entries
+      Object.keys(states).forEach(key => delete states[key]);
+      keepEntries.forEach(([filename, state]) => {
+        states[filename] = state;
+      });
+    }
+  }
+  
+  // Method to clear form state for current annotation
+  private clearCurrentFormState(): void {
+    if (!this.annotationData?.filename) {
+      return;
+    }
+  
+    try {
+      const existingStates = this.getStoredFormStates();
+      delete existingStates[this.annotationData.filename];
+      localStorage.setItem(this.formStateKey, JSON.stringify(existingStates));
+      console.log(`Form state cleared for: ${this.annotationData.filename}`);
+    } catch (error) {
+      console.warn('Failed to clear form state:', error);
+    }
+  }
+  
 
   resizeAllTextareas() {
     const allTextareas = document.querySelectorAll('textarea');
@@ -804,16 +933,19 @@ selectFile(jsonFile: string, imageFile: string): void {
     console.log(`Submitting annotation for file: ${baseFilename} by annotator: ${this.annotatorId}`);
   
     const submitSubscription = this.annotationService.submitAnnotation(this.annotatorId, this.jsonData)
-      .subscribe({
-        next: (response) => {
-          console.log('Annotation submitted successfully', response);
-          this.timeTracker.trackSuccessfulSave();
-  
-          // Clear form
-          this.additionalDiagnosis = '';
-          this.additionalObservation = '';
-  
-          alert("Annotation submitted successfully!");
+    .subscribe({
+      next: (response) => {
+        console.log('Annotation submitted successfully', response);
+        this.timeTracker.trackSuccessfulSave();
+
+        // Clear the saved form state since annotation is submitted
+        this.clearCurrentFormState();
+
+        // Clear form
+        this.additionalDiagnosis = '';
+        this.additionalObservation = '';
+
+        alert("Annotation submitted successfully!");
 
           // Update progress
           this.getAnnotatorProgress();
@@ -847,6 +979,9 @@ selectFile(jsonFile: string, imageFile: string): void {
 
   previousAnnotation(): void {
     if (this.currentHistoryIndex > 0) {
+      // Save current state before navigating
+      this.saveCurrentFormState();
+      
       this.currentHistoryIndex--;
       const previousData = this.historyStack[this.currentHistoryIndex];
       console.log('Loading previous annotation:', previousData);
@@ -921,6 +1056,12 @@ beforeUnloadHandler(event: Event) {
     const markSubscription = this.annotationService.markAsNonRelevant(fileName, username).subscribe({
       next: (res) => {
         console.log('File marked as non-relevant:', res);
+        
+        // Clear the saved form state since annotation is completed
+        this.clearCurrentFormState();
+        
+        // Clear the saved form state since annotation is completed
+        this.clearCurrentFormState();
         this.timeTracker.trackSuccessfulSave();
         
         // Update progress after marking as non-relevant
@@ -953,14 +1094,41 @@ beforeUnloadHandler(event: Event) {
   @HostListener('input', ['$event.target'])
   autoGrowTextZone(el: EventTarget | null): void {
     if (el instanceof HTMLTextAreaElement) {
-      console.log('Resizing:', el.value); // ✅ for debug
       // Reset height first to get the correct scrollHeight
       el.style.height = 'auto';
       el.style.height = el.scrollHeight + 'px';
     }
   }
 
- // In your annotation.component.ts file
+  @HostListener('input', ['$event'])
+onFormInput(event: Event): void {
+  // Auto-grow textarea functionality
+  if (event.target instanceof HTMLTextAreaElement) {
+    event.target.style.height = 'auto';
+    event.target.style.height = event.target.scrollHeight + 'px';
+  }
+  
+  // Save form state on input changes (debounced)
+  this.debounceFormStateSave();
+}
+
+@HostListener('change', ['$event'])
+onFormChange(event: Event): void {
+  // Save form state on select/checkbox changes (debounced)
+  this.debounceFormStateSave();
+}
+
+private saveFormStateTimeout: any;
+
+private debounceFormStateSave(): void {
+  if (this.saveFormStateTimeout) {
+    clearTimeout(this.saveFormStateTimeout);
+  }
+  
+  this.saveFormStateTimeout = setTimeout(() => {
+    this.saveCurrentFormState();
+  }, 1000); // Save after 1 second of no input
+}
 
  getLabelText(): string {
   if (!this.annotationData) return 'Not specified';
@@ -1059,6 +1227,13 @@ getTotalAnnotations(): number {
 
   ngOnDestroy(): void {
     // Clean up any object URLs to prevent memory leaks
+    this.saveCurrentFormState();
+  
+    // Clear the timeout
+    if (this.saveFormStateTimeout) {
+      clearTimeout(this.saveFormStateTimeout);
+    }
+
     this.preloadedImages.forEach((url) => {
       URL.revokeObjectURL(url);
     });

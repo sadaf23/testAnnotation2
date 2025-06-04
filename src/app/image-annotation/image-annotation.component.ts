@@ -5,6 +5,10 @@ import { FormsModule } from '@angular/forms';
 import { Subscription, Subject } from 'rxjs';
 import { debounceTime, switchMap } from 'rxjs/operators';
 import { AnnotationData, AnnotationResponse, AnnotationStats } from '../interfaces';
+import { AuthService } from '../auth.service';
+import { TimeTrackerService } from '../time-tracker-service.service';
+import { Router } from '@angular/router';
+import { HttpClient } from '@angular/common/http'; // Add this import
 
 @Component({
   selector: 'app-image-annotation',
@@ -40,12 +44,26 @@ export class ImageAnnotationComponent implements OnInit, OnDestroy {
   annotationStats: AnnotationStats | null = null;
   showStats: boolean = false;
   isZoomed = false;
+  
   // Track the "current" image being annotated
   private currentImageBookmark: { patientIndex: number; imageIndex: number } | null = null;
+  
+  // Count tracking properties
+  legibleCount: number = 0;
+  nonLegibleCount: number = 0;
+  sessionStartTime: Date = new Date();
+  
+  // Add tracking properties
+  private saveCount: number = 0;
+  private prodUrl: string = 'http://localhost:8080'; // Replace with your actual backend URL
 
   constructor(
     private patientImageService: ImageAnnotationService,
-    private cdr: ChangeDetectorRef
+    private cdr: ChangeDetectorRef,
+    private authService: AuthService,
+    private timeTracker: TimeTrackerService,
+    private router: Router,
+    private http: HttpClient // Add HttpClient injection
   ) {
     this.saveAnnotationSubject.pipe(
       debounceTime(1000),
@@ -58,6 +76,13 @@ export class ImageAnnotationComponent implements OnInit, OnDestroy {
           console.log('[ImageAnnotationComponent] Annotation saved:', response);
           this.patientImageService.clearImageCache();
           this.patientImageService.clearStatsCache();
+          
+          // Increment save count and upload tracking data
+          this.saveCount++;
+          
+          // 🔥 ADD THIS LINE - Update TimeTrackerService with successful save
+          this.timeTracker.trackSuccessfulSave(this.getTotalAnnotations());
+          
           // Update bookmark after successful save
           this.updateCurrentImageBookmark();
           this.advanceToNext();
@@ -84,12 +109,16 @@ export class ImageAnnotationComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.username = this.patientImageService.getCurrentUsername();
+    this.loadSessionCounts();
     this.fetchImages();
     this.loadAnnotationStats();
+    this.timeTracker.startSessionTracking();
   }
 
   ngOnDestroy(): void {
+    this.saveSessionCounts(); // Update counts first
     this.subscription.unsubscribe();
+    this.timeTracker.stopSessionTracking(true, this.getTotalAnnotations()); // Use updated counts
   }
 
   private fetchImages(): void {
@@ -138,27 +167,118 @@ export class ImageAnnotationComponent implements OnInit, OnDestroy {
     );
   }
 
+  // Count tracking methods
+ private loadSessionCounts(): void {
+    const savedCounts = sessionStorage.getItem('annotationCounts');
+    const savedStartTime = sessionStorage.getItem('sessionStartTime');
+    const savedSaveCount = sessionStorage.getItem('annotationSaveCount');
+
+    if (savedCounts) {
+      const counts = JSON.parse(savedCounts);
+      this.legibleCount = counts.legibleCount || 0;
+      this.nonLegibleCount = counts.nonLegibleCount || 0;
+    }
+
+    if (savedStartTime) {
+      this.sessionStartTime = new Date(savedStartTime);
+    } else {
+      sessionStorage.setItem('sessionStartTime', this.sessionStartTime.toISOString());
+    }
+
+    if (savedSaveCount) {
+      this.saveCount = parseInt(savedSaveCount, 10) || 0;
+    }
+
+    // Update TimeTrackerService with initial total count
+    this.timeTracker.updateAnnotationCount(this.getTotalAnnotations());
+  }
+
+  private saveSessionCounts(): void {
+    const counts = {
+      legibleCount: this.legibleCount,
+      nonLegibleCount: this.nonLegibleCount
+    };
+    sessionStorage.setItem('annotationCounts', JSON.stringify(counts));
+    sessionStorage.setItem('annotationSaveCount', this.saveCount.toString());
+    // Update TimeTrackerService with total count
+    this.timeTracker.updateAnnotationCount(this.getTotalAnnotations());
+  }
+
+  private incrementLegibleCount(): void {
+    this.legibleCount++;
+    this.saveSessionCounts();
+    this.timeTracker.updateAnnotationCount(this.getTotalAnnotations()); // Update tracker
+    console.log('[ImageAnnotationComponent] Legible count incremented to:', this.legibleCount);
+  }
+
+  private incrementNonLegibleCount(): void {
+    this.nonLegibleCount++;
+    this.saveSessionCounts();
+    this.timeTracker.updateAnnotationCount(this.getTotalAnnotations()); // Update tracker
+    console.log('[ImageAnnotationComponent] Non-legible count incremented to:', this.nonLegibleCount);
+  }
+
+  resetCounts(): void {
+    this.legibleCount = 0;
+    this.nonLegibleCount = 0;
+    this.saveCount = 0;
+    this.sessionStartTime = new Date();
+    sessionStorage.removeItem('annotationCounts');
+    sessionStorage.removeItem('annotationSaveCount');
+    sessionStorage.setItem('sessionStartTime', this.sessionStartTime.toISOString());
+    this.timeTracker.updateAnnotationCount(this.getTotalAnnotations()); // Update tracker
+    console.log('[ImageAnnotationComponent] Counts reset');
+    this.cdr.markForCheck();
+  }
+
+  
+  logout(): void {
+    console.log('Logout button clicked');
+    this.saveSessionCounts(); // Update counts first
+    this.timeTracker.logout(this.getTotalAnnotations()); // Use updated counts
+    this.authService.logout();
+    this.router.navigate(['/login']);
+  }
+
+  getTotalAnnotations(): number {
+    return this.legibleCount + this.nonLegibleCount;
+  }
+
+  getLegiblePercentage(): number {
+    const total = this.getTotalAnnotations();
+    return total > 0 ? Math.round((this.legibleCount / total) * 100) : 0;
+  }
+
+  getNonLegiblePercentage(): number {
+    const total = this.getTotalAnnotations();
+    return total > 0 ? Math.round((this.nonLegibleCount / total) * 100) : 0;
+  }
+
+  getSessionDuration(): string {
+    const now = new Date();
+    const diffMs = now.getTime() - this.sessionStartTime.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMins / 60);
+    const remainingMins = diffMins % 60;
+    
+    if (diffHours > 0) {
+      return `${diffHours}h ${remainingMins}m`;
+    }
+    return `${diffMins}m`;
+  }
+
+  getAnnotationsPerHour(): number {
+    const now = new Date();
+    const diffMs = now.getTime() - this.sessionStartTime.getTime();
+    const diffHours = diffMs / (1000 * 60 * 60);
+    const total = this.getTotalAnnotations();
+    
+    return diffHours > 0 ? Math.round(total / diffHours) : 0;
+  }
+
   toggleZoom(): void {
     this.isZoomed = !this.isZoomed;
     this.cdr.detectChanges();
-  }
-
-  private loadPatient(patientIndex: number): void {
-    if (patientIndex >= this.allPatients.length) {
-      console.log('[ImageAnnotationComponent] No more patients in batch, fetching more');
-      this.fetchImages();
-      return;
-    }
-    this.currentPatientIndex = patientIndex;
-    this.patientId = this.allPatients[patientIndex].patientId;
-    this.images = this.allPatients[patientIndex].images;
-    this.currentImageIndex = 0;
-    this.resetImageState();
-    // Set or update bookmark for new patient
-    this.updateCurrentImageBookmark();
-    this.isLoading = false;
-    console.log(`[ImageAnnotationComponent] Loaded patient ${this.patientId} with ${this.images.length} images`);
-    this.cdr.markForCheck();
   }
 
   getCurrentImage(): { name: string; url: string } | null {
@@ -181,8 +301,9 @@ export class ImageAnnotationComponent implements OnInit, OnDestroy {
     this.legible = true;
     this.nonLegible = false;
     this.resetChecklist();
+    this.incrementLegibleCount();
     console.log(`[ImageAnnotationComponent] Image ${this.getCurrentImage()?.name} marked as legible`);
-    this.updateCurrentImageBookmark(); // Update bookmark when annotation starts
+    this.updateCurrentImageBookmark();
     this.cdr.markForCheck();
     setTimeout(() => this.saveCurrentAnnotation(), 500);
   }
@@ -191,7 +312,7 @@ export class ImageAnnotationComponent implements OnInit, OnDestroy {
     this.nonLegible = true;
     this.legible = false;
     console.log(`[ImageAnnotationComponent] Image ${this.getCurrentImage()?.name} marked as non-legible`);
-    this.updateCurrentImageBookmark(); // Update bookmark when annotation starts
+    this.updateCurrentImageBookmark();
     this.cdr.markForCheck();
   }
 
@@ -230,6 +351,7 @@ export class ImageAnnotationComponent implements OnInit, OnDestroy {
 
   goToPreviousImage(): void {
     console.log('[ImageAnnotationComponent] Previous button clicked - currentImageIndex:', this.currentImageIndex);
+    
     if (this.currentImageIndex > 0) {
       this.currentImageIndex--;
       this.resetImageState();
@@ -238,14 +360,39 @@ export class ImageAnnotationComponent implements OnInit, OnDestroy {
     } else if (this.currentPatientIndex > 0) {
       const previousPatientIndex = this.currentPatientIndex - 1;
       const previousPatient = this.allPatients[previousPatientIndex];
+      
       this.currentPatientIndex = previousPatientIndex;
       this.patientId = previousPatient.patientId;
       this.images = previousPatient.images;
       this.currentImageIndex = this.images.length - 1;
+      
       this.resetImageState();
-      console.log(`[ImageAnnotationComponent] Moved to patient ${this.patientId}, image ${this.currentImageIndex}`);
+      this.updateCurrentImageBookmark();
+      
+      console.log(`[ImageAnnotationComponent] Moved to previous patient ${this.patientId}, last image (index ${this.currentImageIndex})`);
       this.cdr.markForCheck();
+    } else {
+      console.log('[ImageAnnotationComponent] Already at the first image of the first patient');
     }
+  }
+  
+  private loadPatient(patientIndex: number): void {
+    if (patientIndex >= this.allPatients.length) {
+      console.log('[ImageAnnotationComponent] No more patients in batch, fetching more');
+      this.fetchImages();
+      return;
+    }
+    
+    this.currentPatientIndex = patientIndex;
+    this.patientId = this.allPatients[patientIndex].patientId;
+    this.images = this.allPatients[patientIndex].images;
+    this.currentImageIndex = 0;
+    this.resetImageState();
+    this.updateCurrentImageBookmark();
+    
+    this.isLoading = false;
+    console.log(`[ImageAnnotationComponent] Loaded patient ${this.patientId} with ${this.images.length} images`);
+    this.cdr.markForCheck();
   }
 
   skipToNextImage(): void {
@@ -260,6 +407,7 @@ export class ImageAnnotationComponent implements OnInit, OnDestroy {
   saveNonLegibleAndContinue(): void {
     console.log('[ImageAnnotationComponent] Save non-legible button clicked');
     if (this.isAnyChecklistItemSelected()) {
+      this.incrementNonLegibleCount();
       this.saveCurrentAnnotation();
     } else {
       this.errorMessage = 'Please select at least one reason for non-legibility.';
@@ -329,7 +477,7 @@ export class ImageAnnotationComponent implements OnInit, OnDestroy {
     if (this.currentImageIndex < this.images.length - 1) {
       this.currentImageIndex++;
       this.resetImageState();
-      this.updateCurrentImageBookmark(); // Update bookmark for new image
+      this.updateCurrentImageBookmark();
       console.log(`[ImageAnnotationComponent] Moved to image ${this.currentImageIndex + 1} of ${this.images.length} for patient ${this.patientId}`);
       this.cdr.markForCheck();
     } else {
@@ -353,6 +501,11 @@ export class ImageAnnotationComponent implements OnInit, OnDestroy {
             this.successMessage = `${annotationsToSave.length} annotations saved successfully!`;
             this.patientImageService.clearImageCache();
             this.patientImageService.clearStatsCache();
+            
+            // 🔥 ADD THIS - Update save count for batch saves
+            this.saveCount += annotationsToSave.length;
+            this.timeTracker.trackSuccessfulSave(this.getTotalAnnotations());
+            
             this.fetchImages();
             this.loadAnnotationStats();
           } else {
@@ -448,7 +601,6 @@ export class ImageAnnotationComponent implements OnInit, OnDestroy {
     );
   }
 
-  // New methods for current image navigation
   private updateCurrentImageBookmark(): void {
     this.currentImageBookmark = {
       patientIndex: this.currentPatientIndex,
@@ -471,11 +623,12 @@ export class ImageAnnotationComponent implements OnInit, OnDestroy {
 
   isOnCurrentImage(): boolean {
     if (!this.currentImageBookmark) {
-      return true; // No bookmark means we're on the first image
+      return true;
     }
     return (
       this.currentPatientIndex === this.currentImageBookmark.patientIndex &&
       this.currentImageIndex === this.currentImageBookmark.imageIndex
     );
   }
+
 }

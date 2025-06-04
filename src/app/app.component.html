@@ -2,12 +2,14 @@
   <h1><a routerLink="/dashboard">ANNOTATION</a></h1>
   <button *ngIf="authService.isLoggedIn()" (click)="logout()">Logout</button>
 </header>
-<div class="timer-section">
-  <!-- <div class="timer">⏱️ Total Time: {{ totalTime }}</div> -->
+<div class="timer-section" *ngIf="showTimer">
+  <div class="timer">⏱️ Total Time: {{ totalTime }}</div>
+  
 
 <div *ngIf="currentUser$ | async as user" class="user-avatar">
   Logged in as {{ user.username }}
 </div>
 </div>
+
 
 <router-outlet></router-outlet>

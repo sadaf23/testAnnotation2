@@ -207,4 +207,41 @@ export class AnnotationService {
         })
     );
 }
+getUserAnnotationHistory(annotatorId: string): Observable<any> {
+  return this.http.get(`${this.prodUrl}/api/user-history/${annotatorId}`)
+    .pipe(
+      catchError(error => {
+        console.error('Error fetching user annotation history:', error);
+        return of({ success: false, annotatedFiles: [] });
+      })
+    );
+}
+
+// Get specific annotated data by filename and annotator
+getAnnotatedData(filename: string, annotatorId: string): Observable<any> {
+  const url = `${this.prodUrl}/api/annotated-data/${encodeURIComponent(filename)}?annotatorId=${annotatorId}`;
+  return this.http.get(url)
+    .pipe(
+      catchError(error => {
+        console.error('Error fetching annotated data:', error);
+        return of(null);
+      })
+    );
+}
+
+// Get paginated annotation history for navigation
+getPaginatedAnnotationHistory(annotatorId: string, page: number = 0, limit: number = 10): Observable<any> {
+  const url = `${this.prodUrl}/api/annotations/history/${annotatorId}?page=${page}&limit=${limit}`;
+  return this.http.get(url)
+    .pipe(
+      catchError(error => {
+        console.error('Error fetching paginated annotation history:', error);
+        return of({ 
+          success: false, 
+          annotations: [], 
+          pagination: { currentPage: 0, totalPages: 0, totalItems: 0 } 
+        });
+      })
+    );
+}
 }

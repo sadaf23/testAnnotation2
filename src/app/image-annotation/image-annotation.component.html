@@ -103,6 +103,11 @@
                     <h4>Image Quality Assessment</h4>
                     <p>Please verify the image quality and mark appropriately:</p>
                 </div>
+                <div class="count-display">
+                    <div>Legible: {{legibleCount}} </div>
+                    <div>Non-legible: {{nonLegibleCount}} </div>
+                    <div>Total: {{getTotalAnnotations()}}</div>
+                  </div>
 
                 <!-- Legible/Non-Legible Buttons -->
                 <div class="button-group mb-4">
